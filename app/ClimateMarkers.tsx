@@ -69,6 +69,9 @@ const getShapleyBarHeight = (value: number): number => {
 const SHAPLEY_POS_COLOR = '#3b82f6'; // blue  → pushes ISMR up
 const SHAPLEY_NEG_COLOR = '#f97316'; // orange → pulls ISMR down
 
+// Fixed vertical offset above the marker for all headings in shapley mode
+const LABEL_ABOVE_OFFSET = 20;
+
 // ============================================================================
 // CONNECTIONS
 // ============================================================================
@@ -176,21 +179,27 @@ export default function ClimateMarkers({
         const shapVal = shapleyData[m.id.toLowerCase() as keyof ShapleyData] ?? 0;
 
         if (vizMode === 'shapley') {
+          // Requirement 1: Hide ISMR entirely in Shapley mode
+          if (isISMR) return null;
+
           // ---- Shapley bar chart view ----
           const barH   = getShapleyBarHeight(shapVal);
           const barW   = 16;
           const barCol = shapVal >= 0 ? SHAPLEY_POS_COLOR : SHAPLEY_NEG_COLOR;
           const baseR  = 5;
 
+          // Bar always rises above the base circle
+          const barY = -(barH + baseR + 2);
+
           return (
             <Marker key={m.id} coordinates={m.coords}>
               {/* Base circle */}
               <circle r={baseR} fill="#94a3b8" fillOpacity={0.6} />
 
-              {/* Bar rising above (positive) or below (negative) the marker */}
+              {/* Bar always rendered above the marker */}
               <rect
                 x={-barW / 2}
-                y={shapVal >= 0 ? -(barH + baseR + 2) : baseR + 2}
+                y={barY}
                 width={barW}
                 height={barH}
                 fill={barCol}
@@ -198,9 +207,10 @@ export default function ClimateMarkers({
                 opacity={0.85}
               />
 
-              {/* Label */}
+              {/* Requirement 2: Label always positioned above the marker,
+                  using a fixed offset independent of shapVal sign or bar height */}
               <text
-                y={shapVal >= 0 ? -(barH + baseR + 14) : baseR + barH + 14}
+                y={barY - LABEL_ABOVE_OFFSET}
                 textAnchor="middle"
                 fontSize={10}
                 fontWeight={700}
@@ -209,9 +219,9 @@ export default function ClimateMarkers({
                 {m.id}
               </text>
 
-              {/* Shapley value */}
+              {/* Shapley value displayed just above the bar */}
               <text
-                y={shapVal >= 0 ? -(barH + baseR + 4) : baseR + barH + 4}
+                y={barY - 4}
                 textAnchor="middle"
                 fontSize={8}
                 fill={barCol}
@@ -228,6 +238,7 @@ export default function ClimateMarkers({
         return (
           <Marker key={m.id} coordinates={m.coords}>
             <circle r={radius} fill={getColor(m.value)} fillOpacity={0.85} />
+            {/* Requirement 2: Label always above the marker */}
             <text
               y={-radius - 6}
               textAnchor="middle"
