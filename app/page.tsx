@@ -9,6 +9,7 @@ import {
   Graticule,
 } from 'react-simple-maps';
 import ClimateMarkers, { ShapleyData } from './ClimateMarkers';
+import mockClimateDatabase from './data';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -32,19 +33,11 @@ interface ClimateData {
   ismr: number;
 }
 
-import mockClimateDatabase from './data';
-
 // ============================================================================
 // DUMMY SHAPLEY DATA
-//
-// Shapley values express each oscillation index's marginal contribution to the
-// ISMR prediction for a given month. Positive → pushes rainfall up, negative
-// → pulls it down. These are plausible dummy values; swap for real SHAP output
-// when available.
 // ============================================================================
 
 const DUMMY_SHAPLEY_DATABASE: Record<string, ShapleyData> = {
-  // key: `${year}-${month}`
   default: {
     nao:   -0.18,
     amo:    0.42,
@@ -52,19 +45,15 @@ const DUMMY_SHAPLEY_DATABASE: Record<string, ShapleyData> = {
     pdo:    0.27,
     iod:    0.55,
     anino: -0.12,
-    ismr:   0.80, // self-contribution (lagged) kept for completeness
+    ismr:   0.80,
   },
 };
 
-/** Return dummy Shapley values for the selected year/month.
- *  Falls back to a seasonally-varied default so the values look plausible. */
 const getShapleyData = (year: number, month: number): ShapleyData => {
   const key = `${year}-${month}`;
   if (DUMMY_SHAPLEY_DATABASE[key]) return DUMMY_SHAPLEY_DATABASE[key];
 
-  // Generate deterministic variation from year + month so values differ per
-  // selection without being random on every render.
-  const seed = ((year - 2000) * 12 + month) / 180; // 0 → ~1
+  const seed = ((year - 2000) * 12 + month) / 180;
   const wave = (offset: number) =>
     parseFloat((Math.sin(seed * Math.PI * 2 + offset) * 0.5).toFixed(2));
 
@@ -98,13 +87,13 @@ export default function Page() {
   const [experimentMonth, setExperimentMonth] = useState<number | null>(null);
 
   const [features, setFeatures] = useState<ClimateFeature[]>([
-    { id: 'nao',   name: 'North Atlantic Oscillation',     value: 0.5,  fixed: true, abbreviation: 'NAO'   },
-    { id: 'amo',   name: 'Atlantic Multidecadal Oscillation', value: 0.3, fixed: true, abbreviation: 'AMO'  },
-    { id: 'nino',  name: 'El Niño–Southern Oscillation',   value: -0.2, fixed: true, abbreviation: 'NINO'  },
-    { id: 'pdo',   name: 'Pacific Decadal Oscillation',    value: 0.4,  fixed: true, abbreviation: 'PDO'   },
-    { id: 'iod',   name: 'Indian Ocean Dipole',            value: 0.1,  fixed: true, abbreviation: 'IOD'   },
-    { id: 'anino', name: 'Atlantic Nino',                  value: 85,   fixed: true, abbreviation: 'ANINO' },
-    { id: 'ismr',  name: 'Indian Summer Monsoon Rainfall', value: 300,  fixed: true, abbreviation: 'ISMR'  },
+    { id: 'nao',   name: 'North Atlantic Oscillation',        value: 0.5,  fixed: true, abbreviation: 'NAO'   },
+    { id: 'amo',   name: 'Atlantic Multidecadal Oscillation', value: 0.3,  fixed: true, abbreviation: 'AMO'   },
+    { id: 'nino',  name: 'El Niño–Southern Oscillation',      value: -0.2, fixed: true, abbreviation: 'NINO'  },
+    { id: 'pdo',   name: 'Pacific Decadal Oscillation',       value: 0.4,  fixed: true, abbreviation: 'PDO'   },
+    { id: 'iod',   name: 'Indian Ocean Dipole',               value: 0.1,  fixed: true, abbreviation: 'IOD'   },
+    { id: 'anino', name: 'Atlantic Nino',                     value: 85,   fixed: true, abbreviation: 'ANINO' },
+    { id: 'ismr',  name: 'Indian Summer Monsoon Rainfall',    value: 300,  fixed: true, abbreviation: 'ISMR'  },
   ]);
 
   // --------------------------------------------------------------------------
@@ -137,22 +126,37 @@ export default function Page() {
     );
     if (dataPoint && features.every(f => f.fixed)) return dataPoint.data;
     return {
-      nao:   features.find(f => f.id === 'nao')?.value   || 0,
-      amo:   features.find(f => f.id === 'amo')?.value   || 0,
-      nino:  features.find(f => f.id === 'nino')?.value  || 0,
-      pdo:   features.find(f => f.id === 'pdo')?.value   || 0,
-      iod:   features.find(f => f.id === 'iod')?.value   || 0,
-      anino: features.find(f => f.id === 'anino')?.value || 0,
-      ismr:  features.find(f => f.id === 'ismr')?.value  || 0,
+      nao:   features.find(f => f.id === 'nao')?.value   ?? 0,
+      amo:   features.find(f => f.id === 'amo')?.value   ?? 0,
+      nino:  features.find(f => f.id === 'nino')?.value  ?? 0,
+      pdo:   features.find(f => f.id === 'pdo')?.value   ?? 0,
+      iod:   features.find(f => f.id === 'iod')?.value   ?? 0,
+      anino: features.find(f => f.id === 'anino')?.value ?? 0,
+      ismr:  features.find(f => f.id === 'ismr')?.value  ?? 0,
     };
   };
 
-  const climateData  = getCurrentClimateData();
-  const shapleyData  = getShapleyData(selectedYear, selectedMonth);
+  const climateData = getCurrentClimateData();
+  const shapleyData = getShapleyData(selectedYear, selectedMonth);
 
   // --------------------------------------------------------------------------
   // EVENT HANDLERS
   // --------------------------------------------------------------------------
+
+  const loadDataForYearMonth = (year: number, month: number) => {
+    const dataPoint = mockClimateDatabase.find(
+      d => d.year === year && d.month === month
+    );
+    if (dataPoint) {
+      setFeatures(prev =>
+        prev.map(f => ({
+          ...f,
+          value: dataPoint.data[f.id as keyof ClimateData] ?? f.value,
+          fixed: true,
+        }))
+      );
+    }
+  };
 
   const handleYearChange = (year: number) => {
     setSelectedYear(year);
@@ -164,21 +168,6 @@ export default function Page() {
     setSelectedMonth(month);
     loadDataForYearMonth(selectedYear, month);
     if (isExperimentMode) setIsExperimentMode(false);
-  };
-
-  const loadDataForYearMonth = (year: number, month: number) => {
-    const dataPoint = mockClimateDatabase.find(
-      d => d.year === year && d.month === month
-    );
-    if (dataPoint) {
-      setFeatures(prev =>
-        prev.map(f => ({
-          ...f,
-          value: dataPoint.data[f.id as keyof ClimateData] || f.value,
-          fixed: true,
-        }))
-      );
-    }
   };
 
   const handleFeatureChange = (id: string, value: string) => {
@@ -241,7 +230,7 @@ export default function Page() {
   };
 
   // --------------------------------------------------------------------------
-  // MAP TITLE
+  // DERIVED UI LABELS
   // --------------------------------------------------------------------------
 
   const currentMonthLabel = months.find(m => m.value === selectedMonth)?.label;
@@ -315,9 +304,7 @@ export default function Page() {
             </div>
 
             {/* Links selector */}
-            <span className="text-slate-600 text-sm font-medium tracking-wide">
-              Links:
-            </span>
+            <span className="text-slate-600 text-sm font-medium tracking-wide">Links:</span>
             <select
               className="bg-white border border-slate-300 rounded-md px-4 py-2 text-slate-700 text-sm focus:border-blue-500 focus:outline-none"
               value={linkType}
@@ -366,7 +353,6 @@ export default function Page() {
                 : `Global Climate Oscillations — ${mapTitle}`}
             </h2>
 
-            {/* Shapley info badge */}
             {vizMode === 'shapley' && (
               <span className="text-xs px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 font-medium">
                 SHAP · contribution to ISMR
@@ -379,7 +365,7 @@ export default function Page() {
               projection="geoEqualEarth"
               projectionConfig={{ rotate: [-10, 0, 0], scale: 147 }}
             >
-              <Sphere stroke="#E4E5E6" strokeWidth={0.5} />
+              <Sphere id="rsm-sphere" fill="#f8fafc" stroke="#E4E5E6" strokeWidth={0.5} />
               <Graticule stroke="#E4E5E6" strokeWidth={0.5} />
 
               <Geographies geography="https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json">
@@ -409,7 +395,7 @@ export default function Page() {
             </ComposableMap>
           </section>
 
-          {/* Legend — adapts to vizMode */}
+          {/* Legend */}
           <div className="mt-4 flex items-center justify-center gap-8 text-sm text-slate-500">
             {vizMode === 'markers' ? (
               <>
@@ -433,9 +419,7 @@ export default function Page() {
                   <span>Negative contribution to ISMR</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400">
-                    Bar height ∝ |SHAP value| · Dummy data
-                  </span>
+                  <span className="text-xs text-slate-400">Bar height ∝ |SHAP value| · Dummy data</span>
                 </div>
               </>
             )}
@@ -443,7 +427,7 @@ export default function Page() {
         </div>
 
         {/* ================================================================ */}
-        {/* SHAPLEY TABLE (shown only in shapley mode)                       */}
+        {/* SHAPLEY TABLE                                                    */}
         {/* ================================================================ */}
         {vizMode === 'shapley' && (
           <section className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden">
@@ -465,9 +449,8 @@ export default function Page() {
                         {key}
                       </div>
                       <div className="flex-1 text-sm text-slate-700">
-                        {feature?.name || key}
+                        {feature?.name ?? key}
                       </div>
-                      {/* Mini bar */}
                       <div className="w-40 h-2 bg-slate-100 rounded-full overflow-hidden">
                         <div
                           className="h-full rounded-full transition-all duration-500"
@@ -541,6 +524,7 @@ export default function Page() {
         <footer className="text-center text-xs text-slate-500 mt-8">
           Climate oscillation indices influence global weather systems
         </footer>
+
       </div>
     </div>
   );

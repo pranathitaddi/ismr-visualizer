@@ -1,5 +1,29 @@
 import { Marker, Line } from 'react-simple-maps';
 
+// ============================================================================
+// TYPE DEFINITIONS (exported for use in page.tsx)
+// ============================================================================
+
+export interface ShapleyData {
+  nao: number;
+  amo: number;
+  nino: number;
+  pdo: number;
+  iod: number;
+  anino: number;
+  ismr: number;
+}
+
+interface ClimateData {
+  nao: number;
+  amo: number;
+  nino: number;
+  pdo: number;
+  iod: number;
+  ismr: number;
+  anino: number;
+}
+
 interface ClimateMarker {
   coords: [number, number];
   id: string;
@@ -7,88 +31,90 @@ interface ClimateMarker {
 }
 
 interface ClimateMarkersProps {
-  climateData: {
-    nao: number;
-    amo: number;
-    nino: number;
-    pdo: number;
-    iod: number;
-    ismr: number;
-    anino: number;
-  };
+  climateData: ClimateData;
+  shapleyData: ShapleyData;
   linkType: string;
+  vizMode: 'markers' | 'shapley';
 }
 
-/** Clamp helper */
+// ============================================================================
+// HELPERS
+// ============================================================================
+
 const clamp = (v: number, min: number, max: number) =>
   Math.min(Math.max(v, min), max);
 
-/** Radius scaling */
-const getRadius = (value: number, isISMR: boolean) => {
+const getRadius = (value: number, isISMR: boolean): number => {
   const MIN_R = 4;
   const MAX_R = 14;
-  // normalize
   const normalized = isISMR
-    ? clamp(Math.abs(value) / 1000, 0, 1) // ISMR scale
-    : clamp(Math.abs(value), 0, 1);       // index scale (-1 → 1)
+    ? clamp(Math.abs(value) / 1000, 0, 1)
+    : clamp(Math.abs(value), 0, 1);
   return MIN_R + normalized * (MAX_R - MIN_R);
 };
 
-/** Color mapping */
-const getColor = (value: number, max = 1) => {
-  const alpha = 0.2 + (Math.abs(value) / max) * 0.8;
-  if (value > 0) {
-    // green
-    return `rgba(34, 197, 94, ${alpha})`;
-  }
-  if (value < 0) {
-    // red
-    return `rgba(239, 68, 68, ${alpha})`;
-  }
-  // neutral
+const getColor = (value: number): string => {
+  const alpha = 0.2 + (Math.abs(value)) * 0.8;
+  if (value > 0) return `rgba(34, 197, 94, ${alpha})`;
+  if (value < 0) return `rgba(239, 68, 68, ${alpha})`;
   return 'rgba(148, 163, 184, 0.3)';
 };
 
-const connections = [
-  // NAO connections
-  { from: 'NAO', to: 'AMO', color: '#3b82f6' },
-  { from: 'NAO', to: 'ISMR', color: '#3b82f6' },
-  // AMO connections
-  { from: 'AMO', to: 'ANINO', color: '#ef4444' },
-  { from: 'AMO', to: 'ISMR', color: '#3b82f6' },
-  // NINO connections
-  { from: 'NINO', to: 'PDO', color: '#ef4444' },
-  { from: 'NINO', to: 'IOD', color: '#ef4444' },
-  { from: 'NINO', to: 'ISMR', color: '#3b82f6' },
-  // PDO connections
-  { from: 'PDO', to: 'ISMR', color: '#3b82f6' },
-  // IOD connections
-  { from: 'IOD', to: 'ISMR', color: '#3b82f6' },
-  { from: 'IOD', to: 'NINO', color: '#3b82f6' },
-  // Atlantic Nino connections
-  { from: 'ANINO', to: 'IOD', color: '#3b82f6' },
+/** Bar height proportional to |shapley value|, capped at MAX_BAR_H px */
+const getShapleyBarHeight = (value: number): number => {
+  const MAX_BAR_H = 30;
+  return clamp(Math.abs(value) * MAX_BAR_H * 2, 2, MAX_BAR_H);
+};
+
+const SHAPLEY_POS_COLOR = '#3b82f6'; // blue  → pushes ISMR up
+const SHAPLEY_NEG_COLOR = '#f97316'; // orange → pulls ISMR down
+
+// ============================================================================
+// CONNECTIONS
+// ============================================================================
+
+const connections: { from: string; to: string; color: string }[] = [
+  { from: 'NAO',   to: 'AMO',   color: '#3b82f6' },
+  { from: 'NAO',   to: 'ISMR',  color: '#3b82f6' },
+  { from: 'AMO',   to: 'ANINO', color: '#ef4444' },
+  { from: 'AMO',   to: 'ISMR',  color: '#3b82f6' },
+  { from: 'NINO',  to: 'PDO',   color: '#ef4444' },
+  { from: 'NINO',  to: 'IOD',   color: '#ef4444' },
+  { from: 'NINO',  to: 'ISMR',  color: '#3b82f6' },
+  { from: 'PDO',   to: 'ISMR',  color: '#3b82f6' },
+  { from: 'IOD',   to: 'ISMR',  color: '#3b82f6' },
+  { from: 'IOD',   to: 'NINO',  color: '#3b82f6' },
+  { from: 'ANINO', to: 'IOD',   color: '#3b82f6' },
 ];
 
-export default function ClimateMarkers({ climateData, linkType }: ClimateMarkersProps) {
+// ============================================================================
+// COMPONENT
+// ============================================================================
+
+export default function ClimateMarkers({
+  climateData,
+  shapleyData,
+  linkType,
+  vizMode,
+}: ClimateMarkersProps) {
   const markers: ClimateMarker[] = [
-    { coords: [-30, 65], id: 'NAO', value: climateData.nao },
-    { coords: [-50, 30], id: 'AMO', value: climateData.amo },
+    { coords: [-30,  65], id: 'NAO',   value: climateData.nao   },
+    { coords: [-50,  30], id: 'AMO',   value: climateData.amo   },
     { coords: [-10, -10], id: 'ANINO', value: climateData.anino },
-    { coords: [170, -5], id: 'NINO', value: climateData.nino },
-    { coords: [170, 30], id: 'PDO', value: climateData.pdo },
-    { coords: [78, 0], id: 'IOD', value: climateData.iod },
-    { coords: [78, 22], id: 'ISMR', value: climateData.ismr },
+    { coords: [170,  -5], id: 'NINO',  value: climateData.nino  },
+    { coords: [170,  30], id: 'PDO',   value: climateData.pdo   },
+    { coords: [ 78,   0], id: 'IOD',   value: climateData.iod   },
+    { coords: [ 78,  22], id: 'ISMR',  value: climateData.ismr  },
   ];
 
-  // Helper function to find marker by ID
   const getMarkerById = (id: string) => markers.find(m => m.id === id);
-
-  // Determine if links should be shown based on linkType
   const showLinks = linkType !== 'none';
 
   return (
     <>
-      {/* Define arrowhead markers */}
+      {/* ------------------------------------------------------------------ */}
+      {/* SVG DEFS — arrowheads                                              */}
+      {/* ------------------------------------------------------------------ */}
       <defs>
         <marker
           id="arrowhead-red"
@@ -114,46 +140,94 @@ export default function ClimateMarkers({ climateData, linkType }: ClimateMarkers
         </marker>
       </defs>
 
-      {/* Draw directed links if showLinks is true */}
-      {showLinks && connections.map((connection, idx) => {
-        const fromMarker = getMarkerById(connection.from);
-        const toMarker = getMarkerById(connection.to);
-        
-        if (!fromMarker || !toMarker) return null;
+      {/* ------------------------------------------------------------------ */}
+      {/* LINKS                                                              */}
+      {/* ------------------------------------------------------------------ */}
+      {showLinks &&
+        connections.map((conn, idx) => {
+          const from = getMarkerById(conn.from);
+          const to   = getMarkerById(conn.to);
+          if (!from || !to) return null;
 
-        const from = fromMarker.coords;
-        const to = toMarker.coords;
+          const markerEnd =
+            conn.color === '#ef4444'
+              ? 'url(#arrowhead-red)'
+              : 'url(#arrowhead-blue)';
 
-        // Determine which arrowhead marker to use
-        const markerEnd = connection.color === '#ef4444' 
-          ? 'url(#arrowhead-red)' 
-          : 'url(#arrowhead-blue)';
+          return (
+            <Line
+              key={`conn-${idx}`}
+              from={from.coords}
+              to={to.coords}
+              stroke={conn.color}
+              strokeWidth={2}
+              strokeLinecap="round"
+              opacity={0.6}
+              markerEnd={markerEnd}
+            />
+          );
+        })}
 
-        return (
-          <Line
-            key={`connection-${idx}`}
-            from={from}
-            to={to}
-            stroke={connection.color}
-            strokeWidth={2}
-            strokeLinecap="round"
-            opacity={0.6}
-            markerEnd={markerEnd}
-          />
-        );
-      })}
-
-      {/* Draw markers on top of connections */}
+      {/* ------------------------------------------------------------------ */}
+      {/* MARKERS                                                            */}
+      {/* ------------------------------------------------------------------ */}
       {markers.map((m) => {
-        const isISMR = m.id === 'ISMR';
+        const isISMR  = m.id === 'ISMR';
+        const shapVal = shapleyData[m.id.toLowerCase() as keyof ShapleyData] ?? 0;
+
+        if (vizMode === 'shapley') {
+          // ---- Shapley bar chart view ----
+          const barH   = getShapleyBarHeight(shapVal);
+          const barW   = 16;
+          const barCol = shapVal >= 0 ? SHAPLEY_POS_COLOR : SHAPLEY_NEG_COLOR;
+          const baseR  = 5;
+
+          return (
+            <Marker key={m.id} coordinates={m.coords}>
+              {/* Base circle */}
+              <circle r={baseR} fill="#94a3b8" fillOpacity={0.6} />
+
+              {/* Bar rising above (positive) or below (negative) the marker */}
+              <rect
+                x={-barW / 2}
+                y={shapVal >= 0 ? -(barH + baseR + 2) : baseR + 2}
+                width={barW}
+                height={barH}
+                fill={barCol}
+                rx={2}
+                opacity={0.85}
+              />
+
+              {/* Label */}
+              <text
+                y={shapVal >= 0 ? -(barH + baseR + 14) : baseR + barH + 14}
+                textAnchor="middle"
+                fontSize={10}
+                fontWeight={700}
+                fill="#0f172a"
+              >
+                {m.id}
+              </text>
+
+              {/* Shapley value */}
+              <text
+                y={shapVal >= 0 ? -(barH + baseR + 4) : baseR + barH + 4}
+                textAnchor="middle"
+                fontSize={8}
+                fill={barCol}
+                fontWeight={600}
+              >
+                {shapVal >= 0 ? '+' : ''}{shapVal.toFixed(2)}
+              </text>
+            </Marker>
+          );
+        }
+
+        // ---- Standard marker view ----
         const radius = getRadius(m.value, isISMR);
         return (
           <Marker key={m.id} coordinates={m.coords}>
-            <circle
-              r={radius}
-              fill={getColor(m.value)}
-              fillOpacity={0.85}
-            />
+            <circle r={radius} fill={getColor(m.value)} fillOpacity={0.85} />
             <text
               y={-radius - 6}
               textAnchor="middle"
