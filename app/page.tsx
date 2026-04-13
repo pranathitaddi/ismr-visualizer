@@ -34,6 +34,29 @@ interface ClimateData {
 }
 
 // ============================================================================
+// PARAMETER RANGE DEFINITIONS
+// Typical observed ranges for each index based on the dataset.
+// ============================================================================
+
+interface ParamRange {
+  min: number;
+  max: number;
+  step: number;
+  unit?: string;
+  description: string;
+}
+
+const PARAM_RANGES: Record<string, ParamRange> = {
+  nao:   { min: -3.0,  max:  3.0,  step: 0.05, description: 'Typical: −3 to +3' },
+  amo:   { min: -0.5,  max:  0.5,  step: 0.01, description: 'Typical: −0.5 to +0.5 °C' },
+  nino:  { min: -3.0,  max:  3.0,  step: 0.05, description: 'Typical: −3 to +3 °C (SST anomaly)' },
+  pdo:   { min: -3.0,  max:  3.0,  step: 0.05, description: 'Typical: −3 to +3' },
+  iod:   { min: -1.5,  max:  1.5,  step: 0.05, description: 'Typical: −1.5 to +1.5 °C' },
+  anino: { min: -1.5,  max:  1.5,  step: 0.05, description: 'Typical: −1.5 to +1.5 °C' },
+  ismr:  { min:  200,  max:  1000, step: 5,    unit: 'mm', description: 'Typical: 200 – 1000 mm' },
+};
+
+// ============================================================================
 // DUMMY SHAPLEY DATA
 // ============================================================================
 
@@ -69,6 +92,229 @@ const getShapleyData = (year: number, month: number): ShapleyData => {
 };
 
 // ============================================================================
+// SHAPLEY SIDE PANEL
+// ============================================================================
+
+function ShapleyPanel({
+  shapleyData,
+  features,
+  currentMonthLabel,
+  selectedYear,
+}: {
+  shapleyData: ShapleyData;
+  features: ClimateFeature[];
+  currentMonthLabel: string | undefined;
+  selectedYear: number;
+}) {
+  const maxAbs = Math.max(
+    ...Object.values(shapleyData).map(Math.abs),
+    0.01,
+  );
+
+  return (
+    <aside className="w-56 flex-shrink-0 flex flex-col gap-3">
+      <div className="flex flex-col gap-0.5 mb-1">
+        <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
+          Shapley Values
+        </span>
+        <span className="text-xs text-slate-500">
+          {currentMonthLabel} {selectedYear}
+        </span>
+        <span className="text-[9px] text-slate-400 mt-0.5">
+          Contribution to ISMR · dummy data
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        {(Object.entries(shapleyData) as [keyof ShapleyData, number][])
+          .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+          .map(([key, val]) => {
+            const feature = features.find(f => f.id === key);
+            const pct = (Math.abs(val) / maxAbs) * 100;
+            const isPos = val >= 0;
+
+            return (
+              <div key={key} className="bg-white rounded-lg border border-slate-100 shadow-sm px-3 py-2">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-bold font-mono text-slate-500 uppercase tracking-wide">
+                    {key}
+                  </span>
+                  <span
+                    className="text-xs font-semibold tabular-nums"
+                    style={{ color: isPos ? '#1d4ed8' : '#c2410c' }}
+                  >
+                    {isPos ? '+' : ''}{val.toFixed(3)}
+                  </span>
+                </div>
+
+                {/* Bar */}
+                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${pct}%`,
+                      backgroundColor: isPos ? '#3b82f6' : '#f97316',
+                    }}
+                  />
+                </div>
+
+                <div className="text-[9px] text-slate-400 mt-1 leading-tight truncate">
+                  {feature?.name ?? key}
+                </div>
+              </div>
+            );
+          })}
+      </div>
+
+      {/* Color legend */}
+      <div className="mt-auto pt-2 flex flex-col gap-1">
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-sm bg-blue-500 flex-shrink-0" />
+          <span className="text-[9px] text-slate-500">Positive contribution</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-sm bg-orange-500 flex-shrink-0" />
+          <span className="text-[9px] text-slate-500">Negative contribution</span>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// ============================================================================
+// PARAMETER SIDE PANEL
+// ============================================================================
+
+function ParameterPanel({
+  features,
+  isExperimentMode,
+  onFeatureChange,
+  onToggleFix,
+  onToggleExperimentMode,
+  onSubmit,
+  loading,
+}: {
+  features: ClimateFeature[];
+  isExperimentMode: boolean;
+  onFeatureChange: (id: string, value: string) => void;
+  onToggleFix: (id: string) => void;
+  onToggleExperimentMode: () => void;
+  onSubmit: () => void;
+  loading: boolean;
+}) {
+  return (
+    <aside className="w-60 flex-shrink-0 flex flex-col gap-3">
+      <div className="flex flex-col gap-0.5 mb-1">
+        <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
+          Parameters
+        </span>
+        <span className="text-[9px] text-slate-400">
+          Drag sliders to explore scenarios
+        </span>
+      </div>
+
+      {/* Experiment toggle */}
+      <button
+        onClick={onToggleExperimentMode}
+        className={`text-xs px-3 py-1.5 rounded-md border transition-colors text-left ${
+          isExperimentMode
+            ? 'border-amber-400 bg-amber-50 text-amber-700'
+            : 'border-slate-300 text-slate-600 hover:border-slate-400 hover:bg-slate-50'
+        }`}
+      >
+        {isExperimentMode ? '✕ Exit Experiment' : '⚗ Start Experiment'}
+      </button>
+
+      {/* Feature sliders */}
+      <div className="flex flex-col gap-2">
+        {features.map(f => {
+          const range = PARAM_RANGES[f.id] ?? { min: -5, max: 5, step: 0.1, description: '' };
+          const pct = ((f.value - range.min) / (range.max - range.min)) * 100;
+
+          return (
+            <div
+              key={f.id}
+              className={`bg-white rounded-lg border shadow-sm px-3 py-2.5 transition-all ${
+                f.fixed ? 'border-slate-100' : 'border-amber-300 bg-amber-50/30'
+              }`}
+            >
+              {/* Header row */}
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold font-mono text-slate-600 uppercase tracking-wide">
+                    {f.abbreviation}
+                  </span>
+                  {!f.fixed && (
+                    <span className="text-[8px] text-amber-600 font-medium bg-amber-100 px-1 rounded">
+                      free
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold tabular-nums text-slate-700">
+                    {f.id === 'ismr' ? f.value.toFixed(0) : f.value.toFixed(2)}
+                    {range.unit ? ` ${range.unit}` : ''}
+                  </span>
+                  <button
+                    onClick={() => onToggleFix(f.id)}
+                    title={f.fixed ? 'Unlock to edit' : 'Lock value'}
+                    className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
+                      f.fixed
+                        ? 'border-slate-200 text-slate-400 hover:border-slate-300'
+                        : 'border-amber-400 bg-amber-100 text-amber-700'
+                    }`}
+                  >
+                    {f.fixed ? '🔒' : '🔓'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Slider */}
+              <input
+                type="range"
+                min={range.min}
+                max={range.max}
+                step={range.step}
+                value={f.value}
+                disabled={f.fixed}
+                onChange={e => onFeatureChange(f.id, e.target.value)}
+                className="w-full h-1.5 appearance-none rounded-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                style={{
+                  background: f.fixed
+                    ? `linear-gradient(to right, #94a3b8 ${pct}%, #e2e8f0 ${pct}%)`
+                    : `linear-gradient(to right, #f59e0b ${pct}%, #fde68a ${pct}%)`,
+                }}
+              />
+
+              {/* Range labels */}
+              <div className="flex justify-between mt-1">
+                <span className="text-[8px] text-slate-400 tabular-nums">{range.min}</span>
+                <span className="text-[8px] text-slate-400">{range.description}</span>
+                <span className="text-[8px] text-slate-400 tabular-nums">{range.max}</span>
+              </div>
+
+              {/* Feature name */}
+              <div className="text-[9px] text-slate-400 mt-0.5 leading-tight truncate">
+                {f.name}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Apply button */}
+      <button
+        onClick={onSubmit}
+        disabled={loading}
+        className="mt-auto px-4 py-2 bg-blue-600 text-white rounded-md text-xs font-medium hover:bg-blue-700 transition-colors disabled:opacity-60 shadow-sm"
+      >
+        {loading ? 'Updating…' : 'Apply Parameters'}
+      </button>
+    </aside>
+  );
+}
+
+// ============================================================================
 // COMPONENT
 // ============================================================================
 
@@ -92,8 +338,8 @@ export default function Page() {
     { id: 'nino',  name: 'El Niño–Southern Oscillation',      value: -0.2, fixed: true, abbreviation: 'NINO'  },
     { id: 'pdo',   name: 'Pacific Decadal Oscillation',       value: 0.4,  fixed: true, abbreviation: 'PDO'   },
     { id: 'iod',   name: 'Indian Ocean Dipole',               value: 0.1,  fixed: true, abbreviation: 'IOD'   },
-    { id: 'anino', name: 'Atlantic Nino',                     value: 85,   fixed: true, abbreviation: 'ANINO' },
-    { id: 'ismr',  name: 'Indian Summer Monsoon Rainfall',    value: 300,  fixed: true, abbreviation: 'ISMR'  },
+    { id: 'anino', name: 'Atlantic Niño',                     value: 0.2,  fixed: true, abbreviation: 'ANINO' },
+    { id: 'ismr',  name: 'Indian Summer Monsoon Rainfall',    value: 600,  fixed: true, abbreviation: 'ISMR'  },
   ]);
 
   // --------------------------------------------------------------------------
@@ -243,42 +489,60 @@ export default function Page() {
   // --------------------------------------------------------------------------
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 px-6 py-10">
-      <div className="max-w-7xl mx-auto space-y-10">
+    <div className="min-h-screen bg-slate-50 text-slate-800 px-4 py-8">
+      {/* Slider thumb styles injected globally */}
+      <style>{`
+        input[type='range']::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          width: 13px;
+          height: 13px;
+          border-radius: 50%;
+          background: #fff;
+          border: 2px solid #94a3b8;
+          cursor: pointer;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+          transition: border-color 0.15s;
+        }
+        input[type='range']:not(:disabled)::-webkit-slider-thumb {
+          border-color: #f59e0b;
+        }
+        input[type='range']::-moz-range-thumb {
+          width: 13px;
+          height: 13px;
+          border-radius: 50%;
+          background: #fff;
+          border: 2px solid #f59e0b;
+          cursor: pointer;
+        }
+        input[type='range']:disabled::-webkit-slider-thumb {
+          border-color: #94a3b8;
+          cursor: not-allowed;
+        }
+      `}</style>
+
+      <div className="max-w-[1400px] mx-auto space-y-6">
 
         {/* ================================================================ */}
         {/* HEADER                                                           */}
         {/* ================================================================ */}
-        <header className="flex items-center justify-between pb-6 mb-8 border-b border-slate-200">
+        <header className="flex items-center justify-between pb-5 border-b border-slate-200">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
               Climate Oscillation Dashboard
               {isExperimentMode && (
-                <span className="ml-3 text-lg text-amber-600 font-medium">
+                <span className="ml-3 text-base text-amber-600 font-medium">
                   • Experiment Mode
                 </span>
               )}
             </h1>
-            <p className="text-slate-500 text-sm mt-1">
+            <p className="text-slate-500 text-sm mt-0.5">
               {isExperimentMode
                 ? 'Custom parameter configuration active'
                 : 'Global climate indices visualization'}
             </p>
           </div>
 
-          <div className="flex items-center gap-4 flex-wrap justify-end">
-            {/* Experiment toggle */}
-            <button
-              onClick={toggleExperimentMode}
-              className={`text-xs px-3 py-1.5 rounded-md border transition-colors ${
-                isExperimentMode
-                  ? 'border-amber-400 bg-amber-50 text-amber-700'
-                  : 'border-slate-300 text-slate-600 hover:border-slate-400 hover:bg-slate-50'
-              }`}
-            >
-              {isExperimentMode ? 'Exit Experiment' : 'Start Experiment'}
-            </button>
-
+          <div className="flex items-center gap-3 flex-wrap justify-end">
             {/* Visualization mode toggle */}
             <div className="flex items-center gap-1 border border-slate-300 rounded-md overflow-hidden shadow-sm bg-white">
               <button
@@ -304,9 +568,9 @@ export default function Page() {
             </div>
 
             {/* Links selector */}
-            <span className="text-slate-600 text-sm font-medium tracking-wide">Links:</span>
+            <span className="text-slate-600 text-sm font-medium">Links:</span>
             <select
-              className="bg-white border border-slate-300 rounded-md px-4 py-2 text-slate-700 text-sm focus:border-blue-500 focus:outline-none"
+              className="bg-white border border-slate-300 rounded-md px-3 py-1.5 text-slate-700 text-sm focus:border-blue-500 focus:outline-none"
               value={linkType}
               onChange={e => setLinkType(e.target.value)}
             >
@@ -316,24 +580,24 @@ export default function Page() {
             </select>
 
             {/* Year / Month selectors */}
-            <span className="text-slate-600 text-sm font-medium tracking-wide">YEAR:</span>
+            <span className="text-slate-600 text-sm font-medium">YEAR:</span>
             <select
               value={selectedYear}
               onChange={e => handleYearChange(+e.target.value)}
               disabled={isExperimentMode}
-              className="bg-white border border-slate-300 px-4 py-2 rounded-md text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm hover:border-slate-400 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-white border border-slate-300 px-3 py-1.5 rounded-md text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm hover:border-slate-400 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {years.map(y => (
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>
 
-            <span className="text-slate-600 text-sm font-medium tracking-wide">MONTH:</span>
+            <span className="text-slate-600 text-sm font-medium">MONTH:</span>
             <select
               value={selectedMonth}
               onChange={e => handleMonthChange(+e.target.value)}
               disabled={isExperimentMode}
-              className="bg-white border border-slate-300 px-4 py-2 rounded-md text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm hover:border-slate-400 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-white border border-slate-300 px-3 py-1.5 rounded-md text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm hover:border-slate-400 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {months.map(m => (
                 <option key={m.value} value={m.value}>{m.label}</option>
@@ -343,185 +607,120 @@ export default function Page() {
         </header>
 
         {/* ================================================================ */}
-        {/* MAP                                                              */}
+        {/* THREE-COLUMN LAYOUT: Shapley | Map | Parameters                 */}
         {/* ================================================================ */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 mb-6 border border-white/20">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-slate-600 uppercase tracking-wider">
-              {vizMode === 'shapley'
-                ? `Shapley Contributions — ${mapTitle}`
-                : `Global Climate Oscillations — ${mapTitle}`}
-            </h2>
+        <div className="flex gap-4 items-start">
 
-            {vizMode === 'shapley' && (
-              <span className="text-xs px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 font-medium">
-                SHAP · contribution to ISMR
-              </span>
-            )}
-          </div>
+          {/* LEFT PANEL — Shapley values (only in shapley mode) */}
+          {vizMode === 'shapley' ? (
+            <ShapleyPanel
+              shapleyData={shapleyData}
+              features={features}
+              currentMonthLabel={currentMonthLabel}
+              selectedYear={selectedYear}
+            />
+          ) : (
+            /* Placeholder to keep map centered when shapley is off */
+            <div className="w-56 flex-shrink-0" />
+          )}
 
-          <section className="border border-slate-200 rounded-xl p-4 bg-white shadow-sm">
-            <ComposableMap
-              projection="geoEqualEarth"
-              projectionConfig={{ rotate: [-10, 0, 0], scale: 147 }}
-            >
-              <Sphere id="rsm-sphere" fill="#f8fafc" stroke="#E4E5E6" strokeWidth={0.5} />
-              <Graticule stroke="#E4E5E6" strokeWidth={0.5} />
+          {/* CENTER — Map */}
+          <div className="flex-1 min-w-0">
+            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-4 border border-white/20">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-base font-bold text-slate-600 uppercase tracking-wider">
+                  {vizMode === 'shapley'
+                    ? `Shapley Contributions — ${mapTitle}`
+                    : `Global Climate Oscillations — ${mapTitle}`}
+                </h2>
+                {vizMode === 'shapley' && (
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 font-medium">
+                    SHAP · contribution to ISMR
+                  </span>
+                )}
+              </div>
 
-              <Geographies geography="https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json">
-                {({ geographies }) =>
-                  geographies.map(geo => (
-                    <Geography
-                      key={geo.rsmKey}
-                      geography={geo}
-                      fill="#eeeeeeff"
-                      stroke="#dadadaff"
-                      strokeWidth={0.5}
-                      style={{
-                        default: { outline: 'none' },
-                        pressed: { outline: 'none' },
-                      }}
-                    />
-                  ))
-                }
-              </Geographies>
+              <section className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                <ComposableMap
+                  projection="geoEqualEarth"
+                  projectionConfig={{ rotate: [-10, 0, 0], scale: 147 }}
+                >
+                  <Sphere id="rsm-sphere" fill="#f8fafc" stroke="#E4E5E6" strokeWidth={0.5} />
+                  <Graticule stroke="#E4E5E6" strokeWidth={0.5} />
 
-              <ClimateMarkers
-                climateData={climateData}
-                shapleyData={shapleyData}
-                linkType={linkType}
-                vizMode={vizMode}
-              />
-            </ComposableMap>
-          </section>
-
-          {/* Legend */}
-          <div className="mt-4 flex items-center justify-center gap-8 text-sm text-slate-500">
-            {vizMode === 'markers' ? (
-              <>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded-full bg-green-500" />
-                  <span>Positive Phase</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded-full bg-red-500" />
-                  <span>Negative Phase</span>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-blue-500" />
-                  <span>Positive contribution to ISMR</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded bg-orange-500" />
-                  <span>Negative contribution to ISMR</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400">Bar height ∝ |SHAP value| · Dummy data</span>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* ================================================================ */}
-        {/* SHAPLEY TABLE                                                    */}
-        {/* ================================================================ */}
-        {vizMode === 'shapley' && (
-          <section className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden">
-            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
-                Shapley Values — {currentMonthLabel} {selectedYear}
-              </h3>
-              <span className="text-xs text-slate-400">Dummy data · replace with real SHAP output</span>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {(Object.entries(shapleyData) as [keyof ShapleyData, number][])
-                .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
-                .map(([key, val]) => {
-                  const feature = features.find(f => f.id === key);
-                  const pct = Math.abs(val) * 100;
-                  return (
-                    <div key={key} className="flex items-center gap-4 px-5 py-3">
-                      <div className="w-14 text-xs font-mono font-semibold text-slate-600 uppercase">
-                        {key}
-                      </div>
-                      <div className="flex-1 text-sm text-slate-700">
-                        {feature?.name ?? key}
-                      </div>
-                      <div className="w-40 h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all duration-500"
+                  <Geographies geography="https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json">
+                    {({ geographies }) =>
+                      geographies.map(geo => (
+                        <Geography
+                          key={geo.rsmKey}
+                          geography={geo}
+                          fill="#eeeeeeff"
+                          stroke="#dadadaff"
+                          strokeWidth={0.5}
                           style={{
-                            width: `${pct}%`,
-                            backgroundColor: val >= 0 ? '#3b82f6' : '#f97316',
+                            default: { outline: 'none' },
+                            pressed: { outline: 'none' },
                           }}
                         />
-                      </div>
-                      <div
-                        className="w-14 text-right text-sm font-medium tabular-nums"
-                        style={{ color: val >= 0 ? '#1d4ed8' : '#c2410c' }}
-                      >
-                        {val >= 0 ? '+' : ''}{val.toFixed(3)}
-                      </div>
+                      ))
+                    }
+                  </Geographies>
+
+                  <ClimateMarkers
+                    climateData={climateData}
+                    shapleyData={shapleyData}
+                    linkType={linkType}
+                    vizMode={vizMode}
+                  />
+                </ComposableMap>
+              </section>
+
+              {/* Legend */}
+              <div className="mt-3 flex items-center justify-center gap-6 text-xs text-slate-500">
+                {vizMode === 'markers' ? (
+                  <>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 rounded-full bg-green-500" />
+                      <span>Positive Phase</span>
                     </div>
-                  );
-                })}
-            </div>
-          </section>
-        )}
-
-        {/* ================================================================ */}
-        {/* SUBMIT BUTTON                                                    */}
-        {/* ================================================================ */}
-        <div className="flex justify-end">
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:bg-blue-400 shadow-sm"
-          >
-            {loading ? 'Updating…' : 'Apply Parameters'}
-          </button>
-        </div>
-
-        {/* ================================================================ */}
-        {/* FEATURE CONTROLS                                                 */}
-        {/* ================================================================ */}
-        <section className="border border-slate-200 rounded-xl divide-y divide-slate-200 bg-white shadow-sm">
-          {features.map(f => (
-            <div key={f.id} className="flex items-center gap-4 p-4">
-              <div className="w-12 text-xs text-slate-600 font-mono font-medium">
-                {f.abbreviation}
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 rounded-full bg-red-500" />
+                      <span>Negative Phase</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 rounded bg-blue-500" />
+                      <span>Positive contribution to ISMR</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 rounded bg-orange-500" />
+                      <span>Negative contribution to ISMR</span>
+                    </div>
+                    <span className="text-slate-400">Bar height ∝ |SHAP| · Dummy data</span>
+                  </>
+                )}
               </div>
-              <div className="flex-1 text-sm text-slate-800">{f.name}</div>
-              <input
-                type="number"
-                step="0.1"
-                value={f.value}
-                disabled={f.fixed}
-                onChange={e => handleFeatureChange(f.id, e.target.value)}
-                className="w-28 bg-white border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 shadow-sm"
-              />
-              <button
-                onClick={() => toggleFix(f.id)}
-                className={`text-xs px-3 py-1.5 rounded-md border transition-colors ${
-                  f.fixed
-                    ? 'border-amber-400 bg-amber-50 text-amber-700'
-                    : 'border-slate-300 text-slate-600 hover:border-slate-400 hover:bg-slate-50'
-                }`}
-              >
-                {f.fixed ? 'Locked' : 'Lock'}
-              </button>
             </div>
-          ))}
-        </section>
+          </div>
+
+          {/* RIGHT PANEL — Parameter sliders */}
+          <ParameterPanel
+            features={features}
+            isExperimentMode={isExperimentMode}
+            onFeatureChange={handleFeatureChange}
+            onToggleFix={toggleFix}
+            onToggleExperimentMode={toggleExperimentMode}
+            onSubmit={handleSubmit}
+            loading={loading}
+          />
+        </div>
 
         {/* ================================================================ */}
         {/* FOOTER                                                           */}
         {/* ================================================================ */}
-        <footer className="text-center text-xs text-slate-500 mt-8">
+        <footer className="text-center text-xs text-slate-400 mt-4">
           Climate oscillation indices influence global weather systems
         </footer>
 
