@@ -183,42 +183,115 @@ function ShapleyPanel({
 
 // ============================================================================
 // PARAMETER SIDE PANEL
+// Supports expanded (full sliders) and contracted (slim tab) states.
 // ============================================================================
 
 function ParameterPanel({
   features,
   isExperimentMode,
+  isPanelExpanded,
   onFeatureChange,
   onToggleFix,
   onToggleExperimentMode,
+  onToggleExpanded,
   onSubmit,
   loading,
 }: {
   features: ClimateFeature[];
   isExperimentMode: boolean;
+  isPanelExpanded: boolean;
   onFeatureChange: (id: string, value: string) => void;
   onToggleFix: (id: string) => void;
   onToggleExperimentMode: () => void;
+  onToggleExpanded: () => void;
   onSubmit: () => void;
   loading: boolean;
 }) {
+  // ── Contracted state: slim vertical tab ────────────────────────────────────
+  if (!isPanelExpanded) {
+    return (
+      <div className="flex-shrink-0 flex flex-col items-center">
+        <button
+          onClick={onToggleExpanded}
+          title="Expand parameters panel"
+          className={`
+            flex flex-col items-center justify-center gap-2
+            w-8 rounded-lg border shadow-sm py-4 transition-all duration-200
+            ${isExperimentMode
+              ? 'border-amber-300 bg-amber-50 hover:bg-amber-100'
+              : 'border-slate-200 bg-white hover:bg-slate-50'}
+          `}
+        >
+          {/* Chevron pointing left (open panel) */}
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="flex-shrink-0">
+            <path
+              d="M8 2L4 6L8 10"
+              stroke={isExperimentMode ? '#d97706' : '#94a3b8'}
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+
+          {/* Vertical label */}
+          <span
+            className="text-[9px] font-bold tracking-widest uppercase leading-none select-none"
+            style={{
+              writingMode: 'vertical-rl',
+              textOrientation: 'mixed',
+              color: isExperimentMode ? '#d97706' : '#94a3b8',
+            }}
+          >
+            {isExperimentMode ? 'Experiment' : 'Parameters'}
+          </span>
+
+          {/* Active indicator dot */}
+          {isExperimentMode && (
+            <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+          )}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Expanded state: full panel ─────────────────────────────────────────────
   return (
     <aside className="w-60 flex-shrink-0 flex flex-col gap-3">
-      <div className="flex flex-col gap-0.5 mb-1">
-        <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
-          Parameters
-        </span>
-        <span className="text-[9px] text-slate-400">
-          Drag sliders to explore scenarios
-        </span>
+
+      {/* Panel header with collapse button */}
+      <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
+            Parameters
+          </span>
+          <span className="text-[9px] text-slate-400">
+            {isExperimentMode ? 'Experiment mode active' : 'Drag sliders to explore'}
+          </span>
+        </div>
+        {/* Collapse button */}
+        <button
+          onClick={onToggleExpanded}
+          title="Collapse parameters panel"
+          className="p-1 rounded hover:bg-slate-100 transition-colors text-slate-400 hover:text-slate-600 flex-shrink-0 mt-0.5"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path
+              d="M4 2L8 6L4 10"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
       </div>
 
-      {/* Experiment toggle */}
+      {/* Experiment toggle button */}
       <button
         onClick={onToggleExperimentMode}
-        className={`text-xs px-3 py-1.5 rounded-md border transition-colors text-left ${
+        className={`text-xs px-3 py-1.5 rounded-md border transition-all duration-150 text-left font-medium ${
           isExperimentMode
-            ? 'border-amber-400 bg-amber-50 text-amber-700'
+            ? 'border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100'
             : 'border-slate-300 text-slate-600 hover:border-slate-400 hover:bg-slate-50'
         }`}
       >
@@ -234,8 +307,12 @@ function ParameterPanel({
           return (
             <div
               key={f.id}
-              className={`bg-white rounded-lg border shadow-sm px-3 py-2.5 transition-all ${
-                f.fixed ? 'border-slate-100' : 'border-amber-300 bg-amber-50/30'
+              className={`rounded-lg border shadow-sm px-3 py-2.5 transition-all duration-200 ${
+                !isExperimentMode
+                  ? 'bg-white border-slate-100 opacity-80'
+                  : f.fixed
+                    ? 'bg-white border-slate-200'
+                    : 'bg-amber-50/40 border-amber-300'
               }`}
             >
               {/* Header row */}
@@ -244,9 +321,14 @@ function ParameterPanel({
                   <span className="text-[10px] font-bold font-mono text-slate-600 uppercase tracking-wide">
                     {f.abbreviation}
                   </span>
-                  {!f.fixed && (
+                  {isExperimentMode && !f.fixed && (
                     <span className="text-[8px] text-amber-600 font-medium bg-amber-100 px-1 rounded">
                       free
+                    </span>
+                  )}
+                  {!isExperimentMode && (
+                    <span className="text-[8px] text-slate-400 font-medium bg-slate-100 px-1 rounded">
+                      locked
                     </span>
                   )}
                 </div>
@@ -255,32 +337,35 @@ function ParameterPanel({
                     {f.id === 'ismr' ? f.value.toFixed(0) : f.value.toFixed(2)}
                     {range.unit ? ` ${range.unit}` : ''}
                   </span>
-                  <button
-                    onClick={() => onToggleFix(f.id)}
-                    title={f.fixed ? 'Unlock to edit' : 'Lock value'}
-                    className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
-                      f.fixed
-                        ? 'border-slate-200 text-slate-400 hover:border-slate-300'
-                        : 'border-amber-400 bg-amber-100 text-amber-700'
-                    }`}
-                  >
-                    {f.fixed ? '🔒' : '🔓'}
-                  </button>
+                  {/* Lock/unlock only meaningful inside experiment mode */}
+                  {isExperimentMode && (
+                    <button
+                      onClick={() => onToggleFix(f.id)}
+                      title={f.fixed ? 'Unlock to edit' : 'Lock value'}
+                      className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
+                        f.fixed
+                          ? 'border-slate-200 text-slate-400 hover:border-slate-300 hover:bg-slate-50'
+                          : 'border-amber-400 bg-amber-100 text-amber-700 hover:bg-amber-200'
+                      }`}
+                    >
+                      {f.fixed ? '🔒' : '🔓'}
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {/* Slider */}
+              {/* Slider — disabled when not in experiment mode OR when locked */}
               <input
                 type="range"
                 min={range.min}
                 max={range.max}
                 step={range.step}
                 value={f.value}
-                disabled={f.fixed}
+                disabled={!isExperimentMode || f.fixed}
                 onChange={e => onFeatureChange(f.id, e.target.value)}
                 className="w-full h-1.5 appearance-none rounded-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                 style={{
-                  background: f.fixed
+                  background: (!isExperimentMode || f.fixed)
                     ? `linear-gradient(to right, #94a3b8 ${pct}%, #e2e8f0 ${pct}%)`
                     : `linear-gradient(to right, #f59e0b ${pct}%, #fde68a ${pct}%)`,
                 }}
@@ -302,11 +387,16 @@ function ParameterPanel({
         })}
       </div>
 
-      {/* Apply button */}
+      {/* Apply button — only active in experiment mode */}
       <button
         onClick={onSubmit}
-        disabled={loading}
-        className="mt-auto px-4 py-2 bg-blue-600 text-white rounded-md text-xs font-medium hover:bg-blue-700 transition-colors disabled:opacity-60 shadow-sm"
+        disabled={loading || !isExperimentMode}
+        title={!isExperimentMode ? 'Start Experiment to apply custom parameters' : undefined}
+        className={`mt-auto px-4 py-2 rounded-md text-xs font-medium transition-all duration-200 shadow-sm ${
+          isExperimentMode
+            ? 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60'
+            : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+        }`}
       >
         {loading ? 'Updating…' : 'Apply Parameters'}
       </button>
@@ -327,6 +417,7 @@ export default function Page() {
   const [selectedMonth, setSelectedMonth] = useState(1);
   const [loading,       setLoading]       = useState(false);
   const [isExperimentMode, setIsExperimentMode] = useState(false);
+  const [isPanelExpanded,  setIsPanelExpanded]  = useState(true);
   const [linkType,  setLinkType]  = useState<string>('none');
   const [vizMode,   setVizMode]   = useState<'markers' | 'shapley'>('markers');
   const [experimentYear,  setExperimentYear]  = useState<number | null>(null);
@@ -441,15 +532,29 @@ export default function Page() {
 
   const toggleExperimentMode = () => {
     if (isExperimentMode) {
+      // Exit: restore dataset values, lock all features, reset experiment state,
+      // and force the panel back to expanded so sliders are clearly visible & locked.
       loadDataForYearMonth(selectedYear, selectedMonth);
       setIsExperimentMode(false);
+      setIsPanelExpanded(true);
       setExperimentYear(null);
       setExperimentMonth(null);
     } else {
       setExperimentYear(selectedYear);
       setExperimentMonth(selectedMonth);
       setIsExperimentMode(true);
+      setIsPanelExpanded(true);
       setFeatures(prev => prev.map(f => ({ ...f, fixed: false })));
+    }
+  };
+
+  const handlePanelExpandedToggle = () => {
+    // Prevent collapsing while in experiment mode to avoid losing context
+    if (!isPanelExpanded) {
+      setIsPanelExpanded(true);
+    } else {
+      // Only allow collapsing outside experiment mode
+      if (!isExperimentMode) setIsPanelExpanded(false);
     }
   };
 
@@ -709,9 +814,11 @@ export default function Page() {
           <ParameterPanel
             features={features}
             isExperimentMode={isExperimentMode}
+            isPanelExpanded={isPanelExpanded}
             onFeatureChange={handleFeatureChange}
             onToggleFix={toggleFix}
             onToggleExperimentMode={toggleExperimentMode}
+            onToggleExpanded={handlePanelExpandedToggle}
             onSubmit={handleSubmit}
             loading={loading}
           />
