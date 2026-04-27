@@ -1,28 +1,16 @@
 import { useState } from 'react';
 import { Marker, Line } from 'react-simple-maps';
 
-// ============================================================================
-// TYPE DEFINITIONS
-// ============================================================================
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface ShapleyData {
-  nao: number;
-  amo: number;
-  nino: number;
-  pdo: number;
-  iod: number;
-  anino: number;
-  ismr: number;
+  nao: number; amo: number; nino: number;
+  pdo: number; iod: number; anino: number; ismr: number;
 }
 
 interface ClimateData {
-  nao: number;
-  amo: number;
-  nino: number;
-  pdo: number;
-  iod: number;
-  ismr: number;
-  anino: number;
+  nao: number; amo: number; nino: number;
+  pdo: number; iod: number; ismr: number; anino: number;
 }
 
 interface ClimateMarker {
@@ -40,61 +28,35 @@ interface ClimateMarkersProps {
   mapHeight?: number;
 }
 
-// ============================================================================
-// CONSTANTS
-// ============================================================================
-
-const SHAPLEY_POS_COLOR = '#3b82f6';
-const SHAPLEY_NEG_COLOR = '#f97316';
-const LABEL_ABOVE_OFFSET = 20;
-
-// ============================================================================
-// EQUAL EARTH PROJECTION
-// ============================================================================
+// ── Equal Earth Projection ────────────────────────────────────────────────────
 
 const EE_A = [1.340264, -0.081106, 0.000893, 0.003796];
 const EE_M = Math.sqrt(3) / 2;
 const EE_X_EXTENT = 2.6350596 * 2;
 const EE_Y_EXTENT = 1.3173627 * 2;
 
-function geoToPixel(
-  lon: number,
-  lat: number,
-  mapWidth: number,
-  mapHeight: number,
-): [number, number] {
+function geoToPixel(lon: number, lat: number, mapWidth: number, mapHeight: number): [number, number] {
   const lam = (lon * Math.PI) / 180;
   const phi = (lat * Math.PI) / 180;
-
   const theta = Math.asin(EE_M * Math.sin(phi));
   const t2 = theta * theta;
   const t6 = t2 * t2 * t2;
-
-  const denom =
-    EE_M *
-    (EE_A[0] +
-      3 * EE_A[1] * t2 +
-      t6 * (7 * EE_A[2] + 9 * EE_A[3] * t2));
-
+  const denom = EE_M * (EE_A[0] + 3 * EE_A[1] * t2 + t6 * (7 * EE_A[2] + 9 * EE_A[3] * t2));
   const x = (lam * Math.cos(theta)) / denom;
-  const y =
-    theta * (EE_A[0] + EE_A[1] * t2 + t6 * (EE_A[2] + EE_A[3] * t2));
-
+  const y = theta * (EE_A[0] + EE_A[1] * t2 + t6 * (EE_A[2] + EE_A[3] * t2));
   const scale = Math.min(mapWidth / EE_X_EXTENT, mapHeight / EE_Y_EXTENT);
   return [mapWidth / 2 + x * scale, mapHeight / 2 - y * scale];
 }
 
-// ============================================================================
-// NODE HELPERS
-// ============================================================================
+// ── Node Helpers ──────────────────────────────────────────────────────────────
 
-const clamp = (v: number, lo: number, hi: number) =>
-  Math.min(Math.max(v, lo), hi);
+const SHAPLEY_POS_COLOR = '#3b82f6';
+const SHAPLEY_NEG_COLOR = '#f97316';
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
 function getRadius(value: number, isISMR: boolean): number {
-  const normalized = isISMR
-    ? clamp(Math.abs(value) / 1000, 0, 1)
-    : clamp(Math.abs(value), 0, 1);
+  const normalized = isISMR ? clamp(Math.abs(value) / 1000, 0, 1) : clamp(Math.abs(value), 0, 1);
   return 4 + normalized * 10;
 }
 
@@ -109,17 +71,11 @@ function getShapleyBarH(value: number): number {
   return clamp(Math.abs(value) * 60, 2, 30);
 }
 
-// ============================================================================
-// EDGE STRENGTH → VISUAL STYLE
-// ============================================================================
+// ── Edge Styles ───────────────────────────────────────────────────────────────
 
 type Strength = 1 | 2 | 3;
 
-interface EdgeStyle {
-  strokeWidth: number;
-  opacity: number;
-  dasharray: string;
-}
+interface EdgeStyle { strokeWidth: number; opacity: number; dasharray: string; }
 
 const STRENGTH_STYLES: Record<Strength, EdgeStyle> = {
   1: { strokeWidth: 2.8, opacity: 0.88, dasharray: '' },
@@ -127,22 +83,13 @@ const STRENGTH_STYLES: Record<Strength, EdgeStyle> = {
   3: { strokeWidth: 1.1, opacity: 0.42, dasharray: '5 3' },
 };
 
-// ============================================================================
-// CONNECTION DEFINITIONS
-// ============================================================================
+// ── Connection Definitions ────────────────────────────────────────────────────
 
 interface Connection {
-  from: string;
-  to: string;
-  color: string;
-  arrow: boolean;
-  strength: Strength;
-  label?: string;
-  curvature?: number;
-  curvatureDir?: 1 | -1;
+  from: string; to: string; color: string; arrow: boolean;
+  strength: Strength; label?: string; curvature?: number; curvatureDir?: 1 | -1;
 }
 
-// ── PCMCI connections (unchanged) ──────────────────────────────────────────
 const PCMCI_CONNECTIONS: Connection[] = [
   { from: 'NINO', to: 'ISMR',  color: '#ef4444', arrow: true,  strength: 1, label: '1' },
   { from: 'PDO',  to: 'ISMR',  color: '#3b82f6', arrow: true,  strength: 1, label: '2', curvature: 0.20, curvatureDir: -1 },
@@ -155,109 +102,42 @@ const PCMCI_CONNECTIONS: Connection[] = [
   { from: 'NINO', to: 'IOD',   color: '#ef4444', arrow: false, strength: 3, curvature: 0.14, curvatureDir: -1 },
 ];
 
-// ── Granger Causality — LINEAR connections ─────────────────────────────────
 const GRANGER_LINEAR_CONNECTIONS: Connection[] = [
-  {
-    from: 'NINO', to: 'ISMR',
-    color: '#4338ca',
-    arrow: true, strength: 1,
-    label: '1',
-    curvature: 0.18, curvatureDir: -1,
-  },
-  {
-    from: 'AMO', to: 'ISMR',
-    color: '#991b1b',
-    arrow: true, strength: 2,
-    label: '2,1',
-    curvature: 0.22, curvatureDir: 1,
-  },
-  {
-    from: 'PDO', to: 'ISMR',
-    color: '#0d9488',
-    arrow: true, strength: 1,
-    label: '2,5,1,3',
-    curvature: 0.32, curvatureDir: -1,
-  },
-  {
-    from: 'NAO', to: 'ISMR',
-    color: '#0d9488',
-    arrow: false, strength: 3,
-    curvature: 0.20, curvatureDir: -1,
-  },
+  { from: 'NINO', to: 'ISMR', color: '#4338ca', arrow: true,  strength: 1, label: '1',     curvature: 0.18, curvatureDir: -1 },
+  { from: 'AMO',  to: 'ISMR', color: '#991b1b', arrow: true,  strength: 2, label: '2,1',   curvature: 0.22, curvatureDir:  1 },
+  { from: 'PDO',  to: 'ISMR', color: '#0d9488', arrow: true,  strength: 1, label: '2,5,1,3', curvature: 0.32, curvatureDir: -1 },
+  { from: 'NAO',  to: 'ISMR', color: '#0d9488', arrow: false, strength: 3, curvature: 0.20, curvatureDir: -1 },
 ];
 
-// ── Granger Causality — NON-LINEAR connections ─────────────────────────────
 const GRANGER_NONLINEAR_CONNECTIONS: Connection[] = [
-  {
-    from: 'NINO', to: 'ISMR',
-    color: '#4338ca',
-    arrow: true, strength: 1,
-    label: '1',
-    curvature: 0.18, curvatureDir: -1,
-  },
-  {
-    from: 'AMO', to: 'ISMR',
-    color: '#991b1b',
-    arrow: true, strength: 2,
-    label: '1,2',
-    curvature: 0.28, curvatureDir: 1,
-  },
-  {
-    from: 'AMO', to: 'ISMR',
-    color: '#991b1b',
-    arrow: false, strength: 3,
-    label: '3',
-    curvature: 0.10, curvatureDir: 1,
-  },
+  { from: 'NINO', to: 'ISMR', color: '#4338ca', arrow: true,  strength: 1, label: '1',   curvature: 0.18, curvatureDir: -1 },
+  { from: 'AMO',  to: 'ISMR', color: '#991b1b', arrow: true,  strength: 2, label: '1,2', curvature: 0.28, curvatureDir:  1 },
+  { from: 'AMO',  to: 'ISMR', color: '#991b1b', arrow: false, strength: 3, label: '3',   curvature: 0.10, curvatureDir:  1 },
 ];
 
-// ============================================================================
-// BÉZIER HELPERS
-// ============================================================================
+// ── Bézier Helpers ────────────────────────────────────────────────────────────
 
-function ctrlPoint(
-  x1: number, y1: number,
-  x2: number, y2: number,
-  curvature: number,
-  dir: number,
-): [number, number] {
-  const mx = (x1 + x2) / 2;
-  const my = (y1 + y2) / 2;
-  const dx = x2 - x1;
-  const dy = y2 - y1;
+function ctrlPoint(x1: number, y1: number, x2: number, y2: number, curvature: number, dir: number): [number, number] {
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+  const dx = x2 - x1, dy = y2 - y1;
   const len = Math.sqrt(dx * dx + dy * dy) || 1;
-  const offset = curvature * len * dir;
-  return [mx + (-dy / len) * offset, my + (dx / len) * offset];
+  const off = curvature * len * dir;
+  return [mx + (-dy / len) * off, my + (dx / len) * off];
 }
 
-function bezierAt(
-  x1: number, y1: number,
-  cpx: number, cpy: number,
-  x2: number, y2: number,
-  t: number,
-): [number, number] {
+function bezierAt(x1: number, y1: number, cpx: number, cpy: number, x2: number, y2: number, t: number): [number, number] {
   const mt = 1 - t;
-  return [
-    mt * mt * x1 + 2 * mt * t * cpx + t * t * x2,
-    mt * mt * y1 + 2 * mt * t * cpy + t * t * y2,
-  ];
+  return [mt * mt * x1 + 2 * mt * t * cpx + t * t * x2, mt * mt * y1 + 2 * mt * t * cpy + t * t * y2];
 }
 
-function retract(
-  sourceX: number, sourceY: number,
-  targetX: number, targetY: number,
-  r: number,
-): [number, number] {
-  const dx = targetX - sourceX;
-  const dy = targetY - sourceY;
+function retract(sx: number, sy: number, tx: number, ty: number, r: number): [number, number] {
+  const dx = tx - sx, dy = ty - sy;
   const len = Math.sqrt(dx * dx + dy * dy) || 1;
-  if (len <= r) return [sourceX, sourceY];
-  return [targetX - (dx / len) * r, targetY - (dy / len) * r];
+  if (len <= r) return [sx, sy];
+  return [tx - (dx / len) * r, ty - (dy / len) * r];
 }
 
-// ============================================================================
-// CURVED EDGE OVERLAY
-// ============================================================================
+// ── Curved Edge Overlay ───────────────────────────────────────────────────────
 
 interface CurvedEdgesProps {
   markers: ClimateMarker[];
@@ -265,18 +145,10 @@ interface CurvedEdgesProps {
   mapWidth: number;
   mapHeight: number;
   nodeRadius: (id: string) => number;
-  /** Unique prefix for SVG marker ids to avoid collisions between panels */
   idPrefix?: string;
 }
 
-function CurvedEdges({
-  markers,
-  curvedConns,
-  mapWidth,
-  mapHeight,
-  nodeRadius,
-  idPrefix = 'cm',
-}: CurvedEdgesProps) {
+function CurvedEdges({ markers, curvedConns, mapWidth, mapHeight, nodeRadius, idPrefix = 'cm' }: CurvedEdgesProps) {
   const [ox, oy] = geoToPixel(0, 0, mapWidth, mapHeight);
 
   const localPx = (id: string): [number, number] | null => {
@@ -286,7 +158,6 @@ function CurvedEdges({
     return [ax - ox, ay - oy];
   };
 
-  // Collect all unique colors used in this edge set
   const colors = Array.from(new Set(curvedConns.map(c => c.color)));
 
   return (
@@ -296,76 +167,37 @@ function CurvedEdges({
           const safeId = col.replace('#', '');
           const markerId = `${idPrefix}-arr-${safeId}`;
           return (
-            <marker
-              key={markerId}
-              id={markerId}
-              viewBox="0 0 10 10"
-              refX="8" refY="5"
-              markerWidth="5" markerHeight="5"
-              orient="auto"
-              markerUnits="strokeWidth"
-            >
-              <path
-                d="M1 1L9 5L1 9"
-                fill="none"
-                stroke={col}
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
+            <marker key={markerId} id={markerId} viewBox="0 0 10 10" refX="8" refY="5"
+              markerWidth="5" markerHeight="5" orient="auto" markerUnits="strokeWidth">
+              <path d="M1 1L9 5L1 9" fill="none" stroke={col} strokeWidth="1.6"
+                strokeLinecap="round" strokeLinejoin="round" />
             </marker>
           );
         })}
       </defs>
 
       {curvedConns.map((conn, i) => {
-        const fp = localPx(conn.from);
-        const tp = localPx(conn.to);
+        const fp = localPx(conn.from), tp = localPx(conn.to);
         if (!fp || !tp) return null;
-
-        const [x1, y1] = fp;
-        const [x2r, y2r] = tp;
+        const [x1, y1] = fp, [x2r, y2r] = tp;
         const [cpx, cpy] = ctrlPoint(x1, y1, x2r, y2r, conn.curvature!, conn.curvatureDir ?? 1);
-
-        const fromR = nodeRadius(conn.from);
-        const toR   = nodeRadius(conn.to);
-
-        const [sx, sy] = retract(cpx, cpy, x1, y1, fromR + 1);
-        const [ex, ey] = retract(cpx, cpy, x2r, y2r, toR + 2);
-
+        const [sx, sy] = retract(cpx, cpy, x1, y1, nodeRadius(conn.from) + 1);
+        const [ex, ey] = retract(cpx, cpy, x2r, y2r, nodeRadius(conn.to) + 2);
         const d = `M ${sx} ${sy} Q ${cpx} ${cpy} ${ex} ${ey}`;
         const style = STRENGTH_STYLES[conn.strength];
-        const safeId = conn.color.replace('#', '');
-        const arrowId = `url(#${idPrefix}-arr-${safeId})`;
-
+        const arrowId = `url(#${idPrefix}-arr-${conn.color.replace('#', '')})`;
         const [lx, ly] = bezierAt(sx, sy, cpx, cpy, ex, ey, 0.5);
 
         return (
           <g key={`ce-${i}`}>
-            <path
-              d={d}
-              fill="none"
-              stroke={conn.color}
-              strokeWidth={style.strokeWidth}
-              strokeOpacity={style.opacity}
-              strokeDasharray={style.dasharray || undefined}
-              strokeLinecap="round"
-              markerEnd={conn.arrow ? arrowId : undefined}
-            />
+            <path d={d} fill="none" stroke={conn.color} strokeWidth={style.strokeWidth}
+              strokeOpacity={style.opacity} strokeDasharray={style.dasharray || undefined}
+              strokeLinecap="round" markerEnd={conn.arrow ? arrowId : undefined} />
             {conn.label && (
               <>
-                <circle cx={lx} cy={ly} r={8} fill="white" fillOpacity={0.88}/>
-                <text
-                  x={lx}
-                  y={ly}
-                  textAnchor="middle"
-                  dominantBaseline="central"
-                  fontSize={9}
-                  fontWeight={700}
-                  fill={conn.color}
-                >
-                  {conn.label}
-                </text>
+                <circle cx={lx} cy={ly} r={8} fill="white" fillOpacity={0.88} />
+                <text x={lx} y={ly} textAnchor="middle" dominantBaseline="central"
+                  fontSize={9} fontWeight={700} fill={conn.color}>{conn.label}</text>
               </>
             )}
           </g>
@@ -375,73 +207,35 @@ function CurvedEdges({
   );
 }
 
-// ============================================================================
-// STRAIGHT EDGE LABEL
-// ============================================================================
+// ── Straight Edge Label ───────────────────────────────────────────────────────
 
-function StraightEdgeLabel({
-  from,
-  to,
-  label,
-  color,
-}: {
-  from: [number, number];
-  to: [number, number];
-  label: string;
-  color: string;
+function StraightEdgeLabel({ from, to, label, color }: {
+  from: [number, number]; to: [number, number]; label: string; color: string;
 }) {
-  const mid: [number, number] = [
-    (from[0] + to[0]) / 2,
-    (from[1] + to[1]) / 2,
-  ];
+  const mid: [number, number] = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
   return (
     <Marker coordinates={mid}>
-      <circle r={8} fill="white" fillOpacity={0.88}/>
-      <text
-        textAnchor="middle"
-        dominantBaseline="central"
-        fontSize={10}
-        fontWeight={700}
-        fill={color}
-      >
+      <circle r={8} fill="white" fillOpacity={0.88} />
+      <text textAnchor="middle" dominantBaseline="central" fontSize={10} fontWeight={700} fill={color}>
         {label}
       </text>
     </Marker>
   );
 }
 
-// ============================================================================
-// GRANGER PANEL TITLE
-// Rendered at a fixed geographic position above the map area.
-// ============================================================================
+// ── Panel Title ───────────────────────────────────────────────────────────────
 
-function PanelTitle({
-  label,
-  title,
-  coords,
-}: {
-  label: string;
-  title: string;
-  coords: [number, number];
-}) {
+function PanelTitle({ label, title, coords }: { label: string; title: string; coords: [number, number] }) {
   return (
     <Marker coordinates={coords}>
-      <text
-        textAnchor="middle"
-        fontSize={13}
-        fontWeight={700}
-        fill="#0f172a"
-      >
+      <text textAnchor="middle" fontSize={13} fontWeight={700} fill="#0f172a">
         {`(${label})  ${title}`}
       </text>
     </Marker>
   );
 }
 
-// ============================================================================
-// SHARED EDGE RENDERER
-// Handles both straight and curved connections for a given set.
-// ============================================================================
+// ── Edge Set ──────────────────────────────────────────────────────────────────
 
 interface EdgeSetProps {
   markers: ClimateMarker[];
@@ -458,13 +252,10 @@ function EdgeSet({ markers, connections, mapWidth, mapHeight, nodeRadius, idPref
 
   const straightConns = connections.filter(c => !(c.curvature ?? 0));
   const curvedConns   = connections.filter(c =>  (c.curvature ?? 0) > 0);
-
-  // Build unique arrow marker ids for straight lines
   const straightColors = Array.from(new Set(straightConns.map(c => c.color)));
 
   return (
     <>
-      {/* Arrow defs for straight lines */}
       {straightConns.length > 0 && (
         <Marker coordinates={[0, 0]}>
           <defs>
@@ -472,23 +263,10 @@ function EdgeSet({ markers, connections, mapWidth, mapHeight, nodeRadius, idPref
               const safeId = col.replace('#', '');
               const markerId = `${idPrefix}-s-arr-${safeId}`;
               return (
-                <marker
-                  key={markerId}
-                  id={markerId}
-                  viewBox="0 0 10 10"
-                  refX="8" refY="5"
-                  markerWidth="5" markerHeight="5"
-                  orient="auto"
-                  markerUnits="strokeWidth"
-                >
-                  <path
-                    d="M1 1L9 5L1 9"
-                    fill="none"
-                    stroke={col}
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
+                <marker key={markerId} id={markerId} viewBox="0 0 10 10" refX="8" refY="5"
+                  markerWidth="5" markerHeight="5" orient="auto" markerUnits="strokeWidth">
+                  <path d="M1 1L9 5L1 9" fill="none" stroke={col} strokeWidth="1.6"
+                    strokeLinecap="round" strokeLinejoin="round" />
                 </marker>
               );
             })}
@@ -496,175 +274,71 @@ function EdgeSet({ markers, connections, mapWidth, mapHeight, nodeRadius, idPref
         </Marker>
       )}
 
-      {/* Straight edges */}
       {straightConns.map((conn, i) => {
-        const from = getCoords(conn.from);
-        const to   = getCoords(conn.to);
+        const from = getCoords(conn.from), to = getCoords(conn.to);
         if (!from || !to) return null;
-
-        const style   = STRENGTH_STYLES[conn.strength];
-        const safeId  = conn.color.replace('#', '');
-        const arrowId = `url(#${idPrefix}-s-arr-${safeId})`;
-
+        const style = STRENGTH_STYLES[conn.strength];
+        const arrowId = `url(#${idPrefix}-s-arr-${conn.color.replace('#', '')})`;
         return (
           <g key={`se-${i}`}>
-            <Line
-              from={from}
-              to={to}
-              stroke={conn.color}
-              strokeWidth={style.strokeWidth}
-              strokeLinecap="round"
-              opacity={style.opacity}
+            <Line from={from} to={to} stroke={conn.color} strokeWidth={style.strokeWidth}
+              strokeLinecap="round" opacity={style.opacity}
               strokeDasharray={style.dasharray || undefined}
-              markerEnd={conn.arrow ? arrowId : undefined}
-            />
-            {conn.label && (
-              <StraightEdgeLabel from={from} to={to} label={conn.label} color={conn.color} />
-            )}
+              markerEnd={conn.arrow ? arrowId : undefined} />
+            {conn.label && <StraightEdgeLabel from={from} to={to} label={conn.label} color={conn.color} />}
           </g>
         );
       })}
 
-      {/* Curved edges */}
       {curvedConns.length > 0 && (
-        <CurvedEdges
-          markers={markers}
-          curvedConns={curvedConns}
-          mapWidth={mapWidth}
-          mapHeight={mapHeight}
-          nodeRadius={nodeRadius}
-          idPrefix={idPrefix}
-        />
+        <CurvedEdges markers={markers} curvedConns={curvedConns}
+          mapWidth={mapWidth} mapHeight={mapHeight} nodeRadius={nodeRadius} idPrefix={idPrefix} />
       )}
     </>
   );
 }
 
-// ============================================================================
-// GRANGER MODE TOGGLE
-// SVG-based tab-style toggle rendered inside the map via a Marker.
-// Placed at the bottom-left corner of the map coordinate space.
-// ============================================================================
+// ── Granger Toggle ────────────────────────────────────────────────────────────
 
 type GrangerMode = 'linear' | 'nonlinear';
 
-interface GrangerToggleProps {
-  grangerMode: GrangerMode;
-  onSelect: (mode: GrangerMode) => void;
-}
-
-function GrangerToggle({ grangerMode, onSelect }: GrangerToggleProps) {
-  const ACTIVE_FILL   = '#1e293b';
-  const INACTIVE_FILL = '#f1f5f9';
-  const ACTIVE_TEXT   = '#ffffff';
-  const INACTIVE_TEXT = '#64748b';
-  const BORDER_COLOR  = '#cbd5e1';
-
-  const btnW  = 108;
-  const btnH  = 26;
-  const gap   = 4;
-  const rx    = 6;
-  const totalW = btnW * 2 + gap + 8; // 8px padding both sides
+function GrangerToggle({ grangerMode, onSelect }: { grangerMode: GrangerMode; onSelect: (m: GrangerMode) => void }) {
+  const btnW = 108, btnH = 26, gap = 4;
+  const totalW = btnW * 2 + gap + 8;
+  const ACTIVE = '#1e293b', INACTIVE = '#f1f5f9', ACTIVE_T = '#ffffff', INACTIVE_T = '#64748b', BORDER = '#cbd5e1';
 
   return (
-    // Position bottom-left: lon=-170, lat=-72
     <Marker coordinates={[-170, -72]}>
-      {/* Container pill */}
-      <rect
-        x={0}
-        y={0}
-        width={totalW}
-        height={btnH + 8}
-        rx={rx + 2}
-        fill="white"
-        stroke={BORDER_COLOR}
-        strokeWidth={1}
-        fillOpacity={0.95}
-      />
-
-      {/* Label */}
-      <text
-        x={totalW / 2}
-        y={-8}
-        textAnchor="middle"
-        fontSize={8}
-        fontWeight={600}
-        fill="#94a3b8"
-        letterSpacing={0.8}
-      >
+      <rect x={0} y={0} width={totalW} height={btnH + 8} rx={8} fill="white" stroke={BORDER} strokeWidth={1} fillOpacity={0.95} />
+      <text x={totalW / 2} y={-8} textAnchor="middle" fontSize={8} fontWeight={600} fill="#94a3b8" letterSpacing={0.8}>
         GRANGER CAUSALITY
       </text>
-
-      {/* Linear button */}
-      <rect
-        x={4}
-        y={4}
-        width={btnW}
-        height={btnH}
-        rx={rx}
-        fill={grangerMode === 'linear' ? ACTIVE_FILL : INACTIVE_FILL}
-        stroke={grangerMode === 'linear' ? ACTIVE_FILL : BORDER_COLOR}
-        strokeWidth={1}
-        style={{ cursor: 'pointer' }}
-        onClick={() => onSelect('linear')}
-      />
-      <text
-        x={4 + btnW / 2}
-        y={4 + btnH / 2}
-        textAnchor="middle"
-        dominantBaseline="central"
-        fontSize={9.5}
-        fontWeight={600}
-        fill={grangerMode === 'linear' ? ACTIVE_TEXT : INACTIVE_TEXT}
-        style={{ cursor: 'pointer', userSelect: 'none' }}
-        onClick={() => onSelect('linear')}
-      >
-        Linear
-      </text>
-
-      {/* Non-linear button */}
-      <rect
-        x={4 + btnW + gap}
-        y={4}
-        width={btnW}
-        height={btnH}
-        rx={rx}
-        fill={grangerMode === 'nonlinear' ? ACTIVE_FILL : INACTIVE_FILL}
-        stroke={grangerMode === 'nonlinear' ? ACTIVE_FILL : BORDER_COLOR}
-        strokeWidth={1}
-        style={{ cursor: 'pointer' }}
-        onClick={() => onSelect('nonlinear')}
-      />
-      <text
-        x={4 + btnW + gap + btnW / 2}
-        y={4 + btnH / 2}
-        textAnchor="middle"
-        dominantBaseline="central"
-        fontSize={9.5}
-        fontWeight={600}
-        fill={grangerMode === 'nonlinear' ? ACTIVE_TEXT : INACTIVE_TEXT}
-        style={{ cursor: 'pointer', userSelect: 'none' }}
-        onClick={() => onSelect('nonlinear')}
-      >
-        Non-linear
-      </text>
+      {(['linear', 'nonlinear'] as const).map((mode, idx) => {
+        const x = 4 + idx * (btnW + gap);
+        const active = grangerMode === mode;
+        return (
+          <g key={mode}>
+            <rect x={x} y={4} width={btnW} height={btnH} rx={6}
+              fill={active ? ACTIVE : INACTIVE} stroke={active ? ACTIVE : BORDER} strokeWidth={1}
+              style={{ cursor: 'pointer' }} onClick={() => onSelect(mode)} />
+            <text x={x + btnW / 2} y={4 + btnH / 2} textAnchor="middle" dominantBaseline="central"
+              fontSize={9.5} fontWeight={600} fill={active ? ACTIVE_T : INACTIVE_T}
+              style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => onSelect(mode)}>
+              {mode === 'linear' ? 'Linear' : 'Non-linear'}
+            </text>
+          </g>
+        );
+      })}
     </Marker>
   );
 }
 
-// ============================================================================
-// MAIN COMPONENT
-// ============================================================================
+// ── Main Component ────────────────────────────────────────────────────────────
 
 export default function ClimateMarkers({
-  climateData,
-  shapleyData,
-  linkType,
-  vizMode,
-  mapWidth  = 800,
-  mapHeight = 450,
+  climateData, shapleyData, linkType, vizMode,
+  mapWidth = 800, mapHeight = 450,
 }: ClimateMarkersProps) {
-  // ── Granger sub-mode — local state, no prop changes needed ───────────────
   const [grangerMode, setGrangerMode] = useState<GrangerMode>('linear');
 
   const markers: ClimateMarker[] = [
@@ -686,117 +360,61 @@ export default function ClimateMarkers({
   const isGranger = linkType === 'granger';
   const isPCMCI   = linkType === 'pcmci';
 
-  // Active Granger connection set and display metadata
-  const activeGrangerConnections = grangerMode === 'linear'
-    ? GRANGER_LINEAR_CONNECTIONS
-    : GRANGER_NONLINEAR_CONNECTIONS;
-
-  const grangerLabel = grangerMode === 'linear' ? 'a' : 'b';
-  const grangerTitle = grangerMode === 'linear' ? 'Linear' : 'Non-linear';
-  const grangerIdPrefix = grangerMode === 'linear' ? 'gl' : 'gnl';
+  const activeGrangerConnections = grangerMode === 'linear' ? GRANGER_LINEAR_CONNECTIONS : GRANGER_NONLINEAR_CONNECTIONS;
+  const grangerLabel  = grangerMode === 'linear' ? 'a' : 'b';
+  const grangerTitle  = grangerMode === 'linear' ? 'Linear' : 'Non-linear';
+  const grangerPrefix = grangerMode === 'linear' ? 'gl' : 'gnl';
 
   return (
     <>
-      {/* ================================================================
-          GRANGER CAUSALITY — single-panel, mode-switched display
-          ================================================================ */}
+      {/* ── Granger ─────────────────────────────────────────────────────── */}
       {showLinks && isGranger && (
         <>
-          {/* Mode toggle (SVG buttons rendered inside the map) */}
           <GrangerToggle grangerMode={grangerMode} onSelect={setGrangerMode} />
+          <PanelTitle label={grangerLabel} title={grangerTitle} coords={[20, 88]} />
+          <EdgeSet markers={markers} connections={activeGrangerConnections}
+            mapWidth={mapWidth} mapHeight={mapHeight} nodeRadius={nodeRadius} idPrefix={grangerPrefix} />
 
-          {/* Panel title — updates with selected mode */}
-          <PanelTitle
-            label={grangerLabel}
-            title={grangerTitle}
-            coords={[20, 88]}
-          />
-
-          {/* Edge set for the active mode — uses original marker positions */}
-          <EdgeSet
-            markers={markers}
-            connections={activeGrangerConnections}
-            mapWidth={mapWidth}
-            mapHeight={mapHeight}
-            nodeRadius={nodeRadius}
-            idPrefix={grangerIdPrefix}
-          />
-
-          {/* Node markers — rendered at original positions (no offset) */}
-          {markers.map((m) => {
+          {markers.map(m => {
             const isISMR = m.id === 'ISMR';
             const radius = getRadius(m.value, isISMR);
             return (
               <Marker key={`gr-${m.id}`} coordinates={m.coords}>
-                <circle r={radius} fill={getColor(m.value)} fillOpacity={0.85}/>
-                <text
-                  y={-radius - 6}
-                  textAnchor="middle"
-                  fontSize={11} fontWeight={600} fill="#0f172a"
-                >
-                  {m.id}
-                </text>
-                <text
-                  y={radius + 12}
-                  textAnchor="middle"
-                  fontSize={9} fill="#475569"
-                >
+                <circle r={radius} fill={getColor(m.value)} fillOpacity={0.85} />
+                <text y={-radius - 6} textAnchor="middle" fontSize={11} fontWeight={600} fill="#0f172a">{m.id}</text>
+                <text y={radius + 12} textAnchor="middle" fontSize={9} fill="#475569">
                   {isISMR ? m.value.toFixed(0) : m.value.toFixed(2)}
                 </text>
               </Marker>
             );
           })}
 
-          {/* Granger legend */}
           <Marker coordinates={[140, -68]}>
-            <g>
-              <line x1={-30} y1={0} x2={0} y2={0}
-                stroke="#64748b" strokeWidth={1.5} strokeDasharray="3 2"
-                markerEnd="url(#leg-arrow)"
-              />
-              <defs>
-                <marker id="leg-arrow" viewBox="0 0 10 10" refX="8" refY="5"
-                  markerWidth="4" markerHeight="4" orient="auto" markerUnits="strokeWidth">
-                  <path d="M1 1L9 5L1 9" fill="none" stroke="#64748b"
-                    strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                </marker>
-              </defs>
-              <text x={6} y={4} fontSize={9} fill="#64748b" fontWeight={500}>
-                Lagged link
-              </text>
-            </g>
+            <defs>
+              <marker id="leg-arrow" viewBox="0 0 10 10" refX="8" refY="5"
+                markerWidth="4" markerHeight="4" orient="auto" markerUnits="strokeWidth">
+                <path d="M1 1L9 5L1 9" fill="none" stroke="#64748b" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </marker>
+            </defs>
+            <line x1={-30} y1={0} x2={0} y2={0} stroke="#64748b" strokeWidth={1.5}
+              strokeDasharray="3 2" markerEnd="url(#leg-arrow)" />
+            <text x={6} y={4} fontSize={9} fill="#64748b" fontWeight={500}>Lagged link</text>
           </Marker>
         </>
       )}
 
-      {/* ================================================================
-          PCMCI — original single-panel display (unchanged)
-          ================================================================ */}
+      {/* ── PCMCI ───────────────────────────────────────────────────────── */}
       {showLinks && isPCMCI && (
         <>
-          {/* Arrow defs for straight lines */}
           <Marker coordinates={[0, 0]}>
             <defs>
               {(['#dc2626', '#2563eb'] as const).map(col => {
                 const id = col === '#dc2626' ? 'cm-s-red' : 'cm-s-blue';
                 return (
-                  <marker
-                    key={id}
-                    id={id}
-                    viewBox="0 0 10 10"
-                    refX="8" refY="5"
-                    markerWidth="5" markerHeight="5"
-                    orient="auto"
-                    markerUnits="strokeWidth"
-                  >
-                    <path
-                      d="M1 1L9 5L1 9"
-                      fill="none"
-                      stroke={col}
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
+                  <marker key={id} id={id} viewBox="0 0 10 10" refX="8" refY="5"
+                    markerWidth="5" markerHeight="5" orient="auto" markerUnits="strokeWidth">
+                    <path d="M1 1L9 5L1 9" fill="none" stroke={col} strokeWidth="1.6"
+                      strokeLinecap="round" strokeLinejoin="round" />
                   </marker>
                 );
               })}
@@ -807,99 +425,55 @@ export default function ClimateMarkers({
             const from = markers.find(m => m.id === conn.from)?.coords ?? null;
             const to   = markers.find(m => m.id === conn.to)?.coords ?? null;
             if (!from || !to) return null;
-            const style   = STRENGTH_STYLES[conn.strength];
+            const style = STRENGTH_STYLES[conn.strength];
             const arrowId = conn.color === '#ef4444' ? 'url(#cm-s-red)' : 'url(#cm-s-blue)';
             return (
               <g key={`pcmci-se-${i}`}>
-                <Line
-                  from={from}
-                  to={to}
-                  stroke={conn.color}
-                  strokeWidth={style.strokeWidth}
-                  strokeLinecap="round"
-                  opacity={style.opacity}
+                <Line from={from} to={to} stroke={conn.color} strokeWidth={style.strokeWidth}
+                  strokeLinecap="round" opacity={style.opacity}
                   strokeDasharray={style.dasharray || undefined}
-                  markerEnd={conn.arrow ? arrowId : undefined}
-                />
-                {conn.label && (
-                  <StraightEdgeLabel from={from} to={to} label={conn.label} color={conn.color} />
-                )}
+                  markerEnd={conn.arrow ? arrowId : undefined} />
+                {conn.label && <StraightEdgeLabel from={from} to={to} label={conn.label} color={conn.color} />}
               </g>
             );
           })}
 
-          <CurvedEdges
-            markers={markers}
+          <CurvedEdges markers={markers}
             curvedConns={PCMCI_CONNECTIONS.filter(c => (c.curvature ?? 0) > 0)}
-            mapWidth={mapWidth}
-            mapHeight={mapHeight}
-            nodeRadius={nodeRadius}
-            idPrefix="pcmci"
-          />
+            mapWidth={mapWidth} mapHeight={mapHeight} nodeRadius={nodeRadius} idPrefix="pcmci" />
         </>
       )}
 
-      {/* ================================================================
-          NODE MARKERS — standard mode (rendered for PCMCI & no-link modes)
-          Only skip rendering here when granger is active (granger handles nodes)
-          ================================================================ */}
-      {!isGranger && markers.map((m) => {
-        const isISMR  = m.id === 'ISMR';
+      {/* ── Node Markers (non-Granger modes) ────────────────────────────── */}
+      {!isGranger && markers.map(m => {
+        const isISMR = m.id === 'ISMR';
         const shapVal = shapleyData[m.id.toLowerCase() as keyof ShapleyData] ?? 0;
 
-        // ── Shapley bar-chart mode ────────────────────────────────────────
         if (vizMode === 'shapley') {
           if (isISMR) return null;
-
-          const barH   = getShapleyBarH(shapVal);
-          const barW   = 16;
+          const barH = getShapleyBarH(shapVal);
+          const barW = 16, baseR = 5;
+          const barY = -(barH + baseR + 2);
           const barCol = shapVal >= 0 ? SHAPLEY_POS_COLOR : SHAPLEY_NEG_COLOR;
-          const baseR  = 5;
-          const barY   = -(barH + baseR + 2);
 
           return (
             <Marker key={m.id} coordinates={m.coords}>
-              <circle r={baseR} fill="#94a3b8" fillOpacity={0.6}/>
-              <rect
-                x={-barW / 2} y={barY}
-                width={barW}  height={barH}
-                fill={barCol} rx={2} opacity={0.85}
-              />
-              <text
-                y={barY - LABEL_ABOVE_OFFSET}
-                textAnchor="middle"
-                fontSize={10} fontWeight={700} fill="#0f172a"
-              >
-                {m.id}
-              </text>
-              <text
-                y={barY - 4}
-                textAnchor="middle"
-                fontSize={8} fill={barCol} fontWeight={600}
-              >
+              <circle r={baseR} fill="#94a3b8" fillOpacity={0.6} />
+              <rect x={-barW / 2} y={barY} width={barW} height={barH} fill={barCol} rx={2} opacity={0.85} />
+              <text y={barY - 20} textAnchor="middle" fontSize={10} fontWeight={700} fill="#0f172a">{m.id}</text>
+              <text y={barY - 4} textAnchor="middle" fontSize={8} fill={barCol} fontWeight={600}>
                 {shapVal >= 0 ? '+' : ''}{shapVal.toFixed(2)}
               </text>
             </Marker>
           );
         }
 
-        // ── Standard marker mode ──────────────────────────────────────────
         const radius = getRadius(m.value, isISMR);
         return (
           <Marker key={m.id} coordinates={m.coords}>
-            <circle r={radius} fill={getColor(m.value)} fillOpacity={0.85}/>
-            <text
-              y={-radius - 6}
-              textAnchor="middle"
-              fontSize={11} fontWeight={600} fill="#0f172a"
-            >
-              {m.id}
-            </text>
-            <text
-              y={radius + 12}
-              textAnchor="middle"
-              fontSize={9} fill="#475569"
-            >
+            <circle r={radius} fill={getColor(m.value)} fillOpacity={0.85} />
+            <text y={-radius - 6} textAnchor="middle" fontSize={11} fontWeight={600} fill="#0f172a">{m.id}</text>
+            <text y={radius + 12} textAnchor="middle" fontSize={9} fill="#475569">
               {isISMR ? m.value.toFixed(0) : m.value.toFixed(2)}
             </text>
           </Marker>
