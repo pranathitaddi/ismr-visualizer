@@ -57,7 +57,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), h
 
 function getRadius(value: number, isISMR: boolean): number {
   const normalized = isISMR ? clamp(Math.abs(value) / 1000, 0, 1) : clamp(Math.abs(value), 0, 1);
-  return 4 + normalized * 10;
+  return 6 + normalized * 14; // increased base radius and scale
 }
 
 function getColor(value: number): string {
@@ -68,7 +68,7 @@ function getColor(value: number): string {
 }
 
 function getShapleyBarH(value: number): number {
-  return clamp(Math.abs(value) * 60, 2, 30);
+  return clamp(Math.abs(value) * 70, 3, 36);
 }
 
 // ── Edge Styles ───────────────────────────────────────────────────────────────
@@ -78,9 +78,9 @@ type Strength = 1 | 2 | 3;
 interface EdgeStyle { strokeWidth: number; opacity: number; dasharray: string; }
 
 const STRENGTH_STYLES: Record<Strength, EdgeStyle> = {
-  1: { strokeWidth: 2.8, opacity: 0.88, dasharray: '' },
-  2: { strokeWidth: 1.8, opacity: 0.65, dasharray: '' },
-  3: { strokeWidth: 1.1, opacity: 0.42, dasharray: '5 3' },
+  1: { strokeWidth: 3.2, opacity: 0.88, dasharray: '' },
+  2: { strokeWidth: 2.2, opacity: 0.65, dasharray: '' },
+  3: { strokeWidth: 1.4, opacity: 0.42, dasharray: '5 3' },
 };
 
 // ── Connection Definitions ────────────────────────────────────────────────────
@@ -195,9 +195,9 @@ function CurvedEdges({ markers, curvedConns, mapWidth, mapHeight, nodeRadius, id
               strokeLinecap="round" markerEnd={conn.arrow ? arrowId : undefined} />
             {conn.label && (
               <>
-                <circle cx={lx} cy={ly} r={8} fill="white" fillOpacity={0.88} />
+                <circle cx={lx} cy={ly} r={10} fill="white" fillOpacity={0.88} />
                 <text x={lx} y={ly} textAnchor="middle" dominantBaseline="central"
-                  fontSize={9} fontWeight={700} fill={conn.color}>{conn.label}</text>
+                  fontSize={11} fontWeight={700} fill={conn.color}>{conn.label}</text>
               </>
             )}
           </g>
@@ -215,8 +215,8 @@ function StraightEdgeLabel({ from, to, label, color }: {
   const mid: [number, number] = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
   return (
     <Marker coordinates={mid}>
-      <circle r={8} fill="white" fillOpacity={0.88} />
-      <text textAnchor="middle" dominantBaseline="central" fontSize={10} fontWeight={700} fill={color}>
+      <circle r={10} fill="white" fillOpacity={0.88} />
+      <text textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight={700} fill={color}>
         {label}
       </text>
     </Marker>
@@ -228,7 +228,7 @@ function StraightEdgeLabel({ from, to, label, color }: {
 function PanelTitle({ label, title, coords }: { label: string; title: string; coords: [number, number] }) {
   return (
     <Marker coordinates={coords}>
-      <text textAnchor="middle" fontSize={13} fontWeight={700} fill="#0f172a">
+      <text textAnchor="middle" fontSize={15} fontWeight={700} fill="#0f172a">
         {`(${label})  ${title}`}
       </text>
     </Marker>
@@ -303,14 +303,14 @@ function EdgeSet({ markers, connections, mapWidth, mapHeight, nodeRadius, idPref
 type GrangerMode = 'linear' | 'nonlinear';
 
 function GrangerToggle({ grangerMode, onSelect }: { grangerMode: GrangerMode; onSelect: (m: GrangerMode) => void }) {
-  const btnW = 108, btnH = 26, gap = 4;
+  const btnW = 120, btnH = 30, gap = 4;
   const totalW = btnW * 2 + gap + 8;
   const ACTIVE = '#1e293b', INACTIVE = '#f1f5f9', ACTIVE_T = '#ffffff', INACTIVE_T = '#64748b', BORDER = '#cbd5e1';
 
   return (
     <Marker coordinates={[-170, -72]}>
       <rect x={0} y={0} width={totalW} height={btnH + 8} rx={8} fill="white" stroke={BORDER} strokeWidth={1} fillOpacity={0.95} />
-      <text x={totalW / 2} y={-8} textAnchor="middle" fontSize={8} fontWeight={600} fill="#94a3b8" letterSpacing={0.8}>
+      <text x={totalW / 2} y={-10} textAnchor="middle" fontSize={10} fontWeight={600} fill="#94a3b8" letterSpacing={0.8}>
         GRANGER CAUSALITY
       </text>
       {(['linear', 'nonlinear'] as const).map((mode, idx) => {
@@ -322,7 +322,7 @@ function GrangerToggle({ grangerMode, onSelect }: { grangerMode: GrangerMode; on
               fill={active ? ACTIVE : INACTIVE} stroke={active ? ACTIVE : BORDER} strokeWidth={1}
               style={{ cursor: 'pointer' }} onClick={() => onSelect(mode)} />
             <text x={x + btnW / 2} y={4 + btnH / 2} textAnchor="middle" dominantBaseline="central"
-              fontSize={9.5} fontWeight={600} fill={active ? ACTIVE_T : INACTIVE_T}
+              fontSize={11} fontWeight={600} fill={active ? ACTIVE_T : INACTIVE_T}
               style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => onSelect(mode)}>
               {mode === 'linear' ? 'Linear' : 'Non-linear'}
             </text>
@@ -381,8 +381,8 @@ export default function ClimateMarkers({
             return (
               <Marker key={`gr-${m.id}`} coordinates={m.coords}>
                 <circle r={radius} fill={getColor(m.value)} fillOpacity={0.85} />
-                <text y={-radius - 6} textAnchor="middle" fontSize={11} fontWeight={600} fill="#0f172a">{m.id}</text>
-                <text y={radius + 12} textAnchor="middle" fontSize={9} fill="#475569">
+                <text y={-radius - 8} textAnchor="middle" fontSize={13} fontWeight={600} fill="#0f172a">{m.id}</text>
+                <text y={radius + 14} textAnchor="middle" fontSize={11} fill="#475569">
                   {isISMR ? m.value.toFixed(0) : m.value.toFixed(2)}
                 </text>
               </Marker>
@@ -398,7 +398,7 @@ export default function ClimateMarkers({
             </defs>
             <line x1={-30} y1={0} x2={0} y2={0} stroke="#64748b" strokeWidth={1.5}
               strokeDasharray="3 2" markerEnd="url(#leg-arrow)" />
-            <text x={6} y={4} fontSize={9} fill="#64748b" fontWeight={500}>Lagged link</text>
+            <text x={6} y={4} fontSize={11} fill="#64748b" fontWeight={500}>Lagged link</text>
           </Marker>
         </>
       )}
@@ -452,7 +452,7 @@ export default function ClimateMarkers({
         if (vizMode === 'shapley') {
           if (isISMR) return null;
           const barH = getShapleyBarH(shapVal);
-          const barW = 16, baseR = 5;
+          const barW = 18, baseR = 6;
           const barY = -(barH + baseR + 2);
           const barCol = shapVal >= 0 ? SHAPLEY_POS_COLOR : SHAPLEY_NEG_COLOR;
 
@@ -460,8 +460,8 @@ export default function ClimateMarkers({
             <Marker key={m.id} coordinates={m.coords}>
               <circle r={baseR} fill="#94a3b8" fillOpacity={0.6} />
               <rect x={-barW / 2} y={barY} width={barW} height={barH} fill={barCol} rx={2} opacity={0.85} />
-              <text y={barY - 20} textAnchor="middle" fontSize={10} fontWeight={700} fill="#0f172a">{m.id}</text>
-              <text y={barY - 4} textAnchor="middle" fontSize={8} fill={barCol} fontWeight={600}>
+              <text y={barY - 24} textAnchor="middle" fontSize={12} fontWeight={700} fill="#0f172a">{m.id}</text>
+              <text y={barY - 6} textAnchor="middle" fontSize={10} fill={barCol} fontWeight={600}>
                 {shapVal >= 0 ? '+' : ''}{shapVal.toFixed(2)}
               </text>
             </Marker>
@@ -472,8 +472,8 @@ export default function ClimateMarkers({
         return (
           <Marker key={m.id} coordinates={m.coords}>
             <circle r={radius} fill={getColor(m.value)} fillOpacity={0.85} />
-            <text y={-radius - 6} textAnchor="middle" fontSize={11} fontWeight={600} fill="#0f172a">{m.id}</text>
-            <text y={radius + 12} textAnchor="middle" fontSize={9} fill="#475569">
+            <text y={-radius - 8} textAnchor="middle" fontSize={13} fontWeight={600} fill="#0f172a">{m.id}</text>
+            <text y={radius + 14} textAnchor="middle" fontSize={11} fill="#475569">
               {isISMR ? m.value.toFixed(0) : m.value.toFixed(2)}
             </text>
           </Marker>
