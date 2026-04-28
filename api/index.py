@@ -201,7 +201,69 @@ def build_feature_vector(monthly_data: list[dict], target_year: int) -> np.ndarr
 
 # ── Flask app ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
-CORS(app)   # allow requests from Next.js dev server / production origin
+
+# ── CORS — explicit config for production builds ──────────────────────────────
+#
+# The root cause of CORS failures in production:
+#
+#   1. CORS(app) with no arguments uses a wildcard origin ("*"), but browsers
+#      BLOCK wildcard origins on requests that carry credentials or custom
+#      headers (e.g. Content-Type: application/json triggers a preflight).
+#
+#   2. flask_cors must also explicitly allow the OPTIONS preflight method.
+#      Without it, preflight requests (sent automatically by browsers before
+#      POST with JSON body) return no CORS headers → browser blocks the call.
+#
+#   3. Reverse proxies (Vercel, Render, Railway, Nginx) can strip or rewrite
+#      Origin headers. Explicitly listing allowed origins prevents mismatches.
+#
+# Fix: configure flask_cors to:
+#   • allow all origins (or lock to your domain via ALLOWED_ORIGINS env var)
+#   • expose the exact headers Next.js sends
+#   • explicitly support OPTIONS preflight
+#   • set a long max_age so browsers cache preflight responses
+#
+# Set ALLOWED_ORIGINS env var to restrict in production, e.g.:
+#   ALLOWED_ORIGINS=https://your-app.vercel.app,https://yourdomain.com
+# Leave unset to allow all origins (fine for public APIs).
+# ---------------------------------------------------------------------------
+
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
+ALLOWED_ORIGINS = (
+    [o.strip() for o in _raw_origins.split(",")]
+    if _raw_origins != "*"
+    else "*"
+)
+
+CORS(
+    app,
+    origins=ALLOWED_ORIGINS,
+    methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+    expose_headers=["Content-Type"],
+    supports_credentials=False,   # must be False when origins="*"
+    max_age=86400,                # browsers cache preflight for 24 h
+)
+
+
+# ── Explicit OPTIONS handler — catches any route the browser preflights ───────
+# flask_cors handles this automatically, but some reverse proxies swallow the
+# response before it reaches the browser. This belt-and-suspenders handler
+# ensures preflight always gets a 204 with correct headers.
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        origin = request.headers.get("Origin", "*")
+        allowed = ALLOWED_ORIGINS
+        if allowed == "*" or origin in allowed:
+            resp = app.make_default_options_response()
+            resp.headers["Access-Control-Allow-Origin"]  = origin if allowed != "*" else "*"
+            resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            resp.headers["Access-Control-Allow-Headers"] = (
+                "Content-Type, Authorization, X-Requested-With, Accept"
+            )
+            resp.headers["Access-Control-Max-Age"] = "86400"
+            return resp
 
 
 @app.route("/health", methods=["GET"])
@@ -218,7 +280,7 @@ def info():
     return jsonify(METADATA), 200
 
 
-@app.route("/predict", methods=["POST"])
+@app.route("/predict", methods=["POST", "OPTIONS"])
 def predict():
     """
     Predict annual Indian Summer Monsoon Rainfall (ISMR) for a given year.
@@ -242,6 +304,10 @@ def predict():
       "unit": "mm"
     }
     """
+    # Preflight is handled by before_request, but add a guard just in case
+    if request.method == "OPTIONS":
+        return jsonify({}), 204
+
     if MODEL is None:
         return jsonify({"error": "Model not loaded. Check server logs."}), 503
 
@@ -292,7 +358,38 @@ def predict():
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
+# Uses Waitress (production WSGI server) instead of Flask's built-in dev server.
+# Flask's dev server is single-threaded and not safe for production use.
+#
+# Waitress is pure-Python and works on Windows, Linux, and macOS with no
+# compilation required — unlike uWSGI/gunicorn which need a Unix environment.
+#
+# To start:
+#   python app.py
+#
+# Or invoke Waitress directly (e.g. in a Procfile or Docker CMD):
+#   waitress-serve --host=0.0.0.0 --port=5328 app:app
+#
+# Tuning env vars:
+#   PORT        — port to listen on          (default: 5328)
+#   WEB_THREADS — Waitress worker threads    (default: 4)
+#                 increase for higher concurrency; each thread handles one
+#                 request at a time, so 4 means 4 simultaneous requests.
+
 if __name__ == "__main__":
-    port  = int(os.getenv("PORT", 5328))
-    debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
-    app.run(host="0.0.0.0", port=port, debug=debug)
+    import multiprocessing
+    from waitress import serve
+
+    port    = int(os.getenv("PORT", 5328))
+    # Default to 2× CPU cores, capped at 8 — sensible for an ML inference API
+    # where most time is spent in PyTorch (GIL-released) rather than Python.
+    default_threads = min(max(2, multiprocessing.cpu_count() * 2), 8)
+    threads = int(os.getenv("WEB_THREADS", default_threads))
+
+    print(f"[server] Starting Waitress WSGI server")
+    print(f"[server]   host    : 0.0.0.0")
+    print(f"[server]   port    : {port}")
+    print(f"[server]   threads : {threads}")
+    print(f"[server]   device  : {DEVICE}")
+
+    serve(app, host="0.0.0.0", port=port, threads=threads)
