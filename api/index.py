@@ -23,7 +23,63 @@ StandardScaler.  Integral approximated with IG_STEPS Riemann steps (default 50).
   IG_STEPS    — Riemann steps for the path integral (default: 50)
 """
 
+# ── Free the port FIRST, before any other imports or work ────────────────────
+# This must run at the top so that on supervisord restarts we kill the *previous*
+# process, not ourselves. By the time load_artifacts() runs we already own the port.
 import os
+import signal
+import time as _time
+
+def _free_port_early(port: int) -> None:
+    """
+    Kill any OTHER process currently listening on `port`.
+    Reads /proc/net/tcp directly — no external tools needed.
+    Skips our own PID so we never self-kill.
+    """
+    my_pid = os.getpid()
+    hex_port = format(port, "04X")
+    inodes: set = set()
+
+    for path in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            with open(path) as f:
+                for line in f.readlines()[1:]:
+                    parts = line.split()
+                    if len(parts) > 9 and parts[1].split(":")[1] == hex_port:
+                        inodes.add(parts[9])
+        except FileNotFoundError:
+            continue
+
+    if not inodes:
+        return
+
+    for pid_entry in os.listdir("/proc"):
+        if not pid_entry.isdigit():
+            continue
+        pid = int(pid_entry)
+        if pid == my_pid:
+            continue
+        fd_dir = f"/proc/{pid}/fd"
+        try:
+            for fd in os.listdir(fd_dir):
+                try:
+                    target = os.readlink(f"{fd_dir}/{fd}")
+                    if target.startswith("socket:[") and target[8:-1] in inodes:
+                        print(f"[server] Killing stale PID {pid} on port {port}")
+                        os.kill(pid, signal.SIGKILL)
+                        break
+                except OSError:
+                    continue
+        except OSError:
+            continue
+
+    _time.sleep(1)   # give the kernel a moment to release the socket
+
+
+if __name__ == "__main__":
+    _free_port_early(int(os.getenv("FLASK_PORT", 5328)))
+
+# ── Now safe to do the rest of the imports and startup ───────────────────────
 import json
 import traceback
 import warnings
@@ -142,72 +198,47 @@ except Exception as exc:
     traceback.print_exc()
 
 
-# ── Integrated Gradients (pure PyTorch — zero extra dependencies) ─────────────
+# ── Integrated Gradients ──────────────────────────────────────────────────────
 _IG_STEPS = int(os.getenv("IG_STEPS", 50))
 
 
 def integrated_gradients(
     model: nn.Module,
-    x_scaled: torch.Tensor,   # (1, 48) float32, already in scaled space
+    x_scaled: torch.Tensor,
     n_steps: int = _IG_STEPS,
 ) -> np.ndarray:
-    """
-    Integrated Gradients attributions (Sundararajan et al., 2017).
-
-    Baseline: all-zeros vector in scaled space.
-    After StandardScaler, E[x_scaled] = 0, so zeros == training-set mean --
-    the conventional "uninformative" reference point.
-
-    The path integral is approximated by a uniform Riemann sum with n_steps
-    points.  All steps are evaluated in a single batched forward+backward
-    pass for efficiency.
-
-    Returns
-    -------
-    attributions : (48,) ndarray
-        Completeness holds: sum(attributions) ~= F(x) - F(baseline).
-    """
-    model.eval()  # freeze Dropout / BatchNorm
+    model.eval()
 
     x_scaled = x_scaled.to(DEVICE)
-    baseline = torch.zeros_like(x_scaled)          # (1, 48)
-    delta    = x_scaled - baseline                  # (1, 48)
+    baseline = torch.zeros_like(x_scaled)
+    delta    = x_scaled - baseline
 
-    # alpha in {1/n, 2/n, ..., 1}  ->  interpolated: (n_steps, 48)
     alphas = torch.linspace(1.0 / n_steps, 1.0, n_steps, device=DEVICE)
     interpolated = (baseline + alphas.view(-1, 1, 1) * delta.unsqueeze(0)).squeeze(1)
     interpolated.requires_grad_(True)
 
-    output = model(interpolated)      # (n_steps, 1)
-    output.sum().backward()           # grad accumulates in interpolated.grad
+    output = model(interpolated)
+    output.sum().backward()
 
-    avg_grads    = interpolated.grad.detach().mean(dim=0)          # (48,)
-    attributions = (avg_grads * delta.squeeze(0)).cpu().numpy()    # (48,)
+    avg_grads    = interpolated.grad.detach().mean(dim=0)
+    attributions = (avg_grads * delta.squeeze(0)).cpu().numpy()
     return attributions
 
 
 def aggregate_ig_to_climate_keys(attrs_48: np.ndarray) -> dict:
-    """
-    Collapse 48-dim attribution vector to per-climate-variable scores.
-
-    Vector layout:  [n_Oct, An_Oct, A_Oct, Io_Oct,  n_Nov, An_Nov, ...]
-    Each of the 4 feature columns is summed across all 12 monthly slots so the
-    result reflects the net seasonal contribution of each climate driver.
-    """
-    arr      = attrs_48.reshape(len(MONTH_SEQUENCE), len(FEATURE_COLS))  # (12, 4)
-    col_sums = arr.sum(axis=0)                                            # (4,)
+    arr      = attrs_48.reshape(len(MONTH_SEQUENCE), len(FEATURE_COLS))
+    col_sums = arr.sum(axis=0)
 
     result = {FEATURE_TO_SHAPLEY_KEY[col]: float(col_sums[i])
               for i, col in enumerate(FEATURE_COLS)}
-    result["nao"]  = 0.0   # not a model input
-    result["pdo"]  = 0.0   # not a model input
-    result["ismr"] = 0.0   # the target variable, not a predictor
+    result["nao"]  = 0.0
+    result["pdo"]  = 0.0
+    result["ismr"] = 0.0
     return result
 
 
 # ── Feature builder ───────────────────────────────────────────────────────────
 def build_feature_vector(monthly_data: list, target_year: int) -> np.ndarray:
-    """Build (1, 48) float32 feature array. Raises ValueError on bad input."""
     lookup = {}
     for rec in monthly_data:
         try:
@@ -297,11 +328,6 @@ def info():
 
 @app.route("/predict", methods=["POST", "OPTIONS"])
 def predict():
-    """
-    POST body: { "target_year": 2000, "monthly_data": [...12 records...] }
-    Each record: { "year", "month", "n", "An", "A", "Io" }
-    Response:   { "target_year": 2000, "prediction": 856.3, "unit": "mm" }
-    """
     if request.method == "OPTIONS":
         return jsonify({}), 204
     if MODEL is None:
@@ -351,24 +377,6 @@ def predict():
 
 @app.route("/shapley", methods=["POST", "OPTIONS"])
 def shapley():
-    """
-    Compute Integrated Gradients feature attributions.
-
-    Accepts the same body as /predict.
-    Returns per-climate-variable attributions summed across all 12 monthly slots.
-    Variables not in the model (nao, pdo) and the target (ismr) are 0.
-
-    Response:
-    {
-      "target_year": 2000,
-      "shapley": {
-        "nino": -0.34, "anino": 0.12, "amo": 0.28, "iod": 0.07,
-        "nao": 0.0, "pdo": 0.0, "ismr": 0.0
-      },
-      "method": "integrated_gradients",
-      "ig_steps": 50
-    }
-    """
     if request.method == "OPTIONS":
         return jsonify({}), 204
     if MODEL is None:
@@ -396,8 +404,8 @@ def shapley():
         return jsonify({"error": str(exc)}), 422
 
     try:
-        X_scaled  = X_SCALER.transform(X_raw).astype(np.float32)   # (1, 48)
-        tensor_in = torch.tensor(X_scaled, dtype=torch.float32)     # CPU for IG
+        X_scaled  = X_SCALER.transform(X_raw).astype(np.float32)
+        tensor_in = torch.tensor(X_scaled, dtype=torch.float32)
 
         attrs_48   = integrated_gradients(MODEL, tensor_in, n_steps=_IG_STEPS)
         aggregated = aggregate_ig_to_climate_keys(attrs_48)
@@ -416,10 +424,12 @@ def shapley():
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    import socket
+    import time
     import multiprocessing
     from waitress import serve
 
-    port    = int(os.getenv("PORT", 5328))
+    port = int(os.getenv("FLASK_PORT", 5328))
     default_threads = min(max(2, multiprocessing.cpu_count() * 2), 8)
     threads = int(os.getenv("WEB_THREADS", default_threads))
 
@@ -430,4 +440,29 @@ if __name__ == "__main__":
     print(f"[server]   device  : {DEVICE}")
     print(f"[server]   ig_steps: {_IG_STEPS}")
 
-    serve(app, host="0.0.0.0", port=port, threads=threads)
+    def bind_socket(candidate_port: int):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("0.0.0.0", candidate_port))
+        s.listen(5)
+        return s
+
+    start_port = port
+    max_port = start_port + 10
+    bound_socket = None
+
+    for candidate in range(start_port, max_port + 1):
+        try:
+            bound_socket = bind_socket(candidate)
+            if candidate != start_port:
+                print(f"[server] Port {start_port} busy, switched to fallback port {candidate}")
+            break
+        except OSError as exc:
+            print(f"[server] Port {candidate} unavailable: {exc}")
+            if candidate == max_port:
+                raise
+            time.sleep(0.5)
+
+    actual_port = bound_socket.getsockname()[1]
+    print(f"[server] Socket bound on port {actual_port}, handing off to Waitress")
+    serve(app, sockets=[bound_socket], threads=threads, channel_timeout=120)
