@@ -424,45 +424,17 @@ def shapley():
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    import socket
-    import time
     import multiprocessing
-    from waitress import serve
 
     port = int(os.getenv("FLASK_PORT", 5328))
     default_threads = min(max(2, multiprocessing.cpu_count() * 2), 8)
     threads = int(os.getenv("WEB_THREADS", default_threads))
 
-    print(f"[server] Starting Waitress WSGI server")
+    print(f"[server] Starting Flask server")
     print(f"[server]   host    : 0.0.0.0")
     print(f"[server]   port    : {port}")
     print(f"[server]   threads : {threads}")
     print(f"[server]   device  : {DEVICE}")
     print(f"[server]   ig_steps: {_IG_STEPS}")
 
-    def bind_socket(candidate_port: int):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind(("0.0.0.0", candidate_port))
-        s.listen(5)
-        return s
-
-    start_port = port
-    max_port = start_port + 10
-    bound_socket = None
-
-    for candidate in range(start_port, max_port + 1):
-        try:
-            bound_socket = bind_socket(candidate)
-            if candidate != start_port:
-                print(f"[server] Port {start_port} busy, switched to fallback port {candidate}")
-            break
-        except OSError as exc:
-            print(f"[server] Port {candidate} unavailable: {exc}")
-            if candidate == max_port:
-                raise
-            time.sleep(0.5)
-
-    actual_port = bound_socket.getsockname()[1]
-    print(f"[server] Socket bound on port {actual_port}, handing off to Waitress")
-    serve(app, sockets=[bound_socket], threads=threads, channel_timeout=120)
+    app.run(host="0.0.0.0", port=port, threaded=True, use_reloader=False)
