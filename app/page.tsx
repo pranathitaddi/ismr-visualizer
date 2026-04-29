@@ -41,7 +41,7 @@ interface ParamRange {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '/api';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000';
 
 const PARAM_RANGES: Record<string, ParamRange> = {
   nao:   { min: -3.0, max:  3.0, step: 0.05, description: '−3 to +3'   },
