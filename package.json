@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"next dev --turbopack\" \"python3 api/index.py\"",
+    "dev": "concurrently \"next dev --turbopack\" \"python3 backend/index.py\"",
     "build": "next build",
-    "start": "concurrently \"next start\" \"python3 api/index.py\"",
+    "start": "concurrently \"next start\" \"python3 backend/index.py\"",
     "lint": "eslint"
   },
   "dependencies": {
