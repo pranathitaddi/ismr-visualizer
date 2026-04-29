@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "concurrently \"next dev --turbopack\" \"python3 api/index.py\"",
     "build": "next build",
-    "start": "next start",
+    "start": "concurrently \"next start\" \"python3 api/index.py\"",
     "lint": "eslint"
   },
   "dependencies": {
