@@ -71,7 +71,13 @@ const MONTHS_FULL = [
   { value: 11, label: 'November'  }, { value: 12, label: 'December'  },
 ];
 
-const YEARS = Array.from({ length: 15 }, (_, i) => 2000 + i);
+const YEARS = Array.from(new Set(mockClimateDatabase.map(d => d.year))).sort((a, b) => a - b);
+const AVAILABLE_MONTHS = Array.from(new Set(mockClimateDatabase.map(d => d.month))).sort((a, b) => a - b);
+const DEFAULT_YEAR = YEARS[0] ?? 2000;
+const DEFAULT_MONTH = AVAILABLE_MONTHS[0] ?? 1;
+const DEFAULT_DATA_POINT = mockClimateDatabase.find(
+  d => d.year === DEFAULT_YEAR && d.month === DEFAULT_MONTH
+);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -584,8 +590,8 @@ function ParameterPanel({
 export default function Page() {
   const { isMobile } = useBreakpoint();
 
-  const [selectedYear,  setSelectedYear]  = useState(2020);
-  const [selectedMonth, setSelectedMonth] = useState(1);
+  const [selectedYear,  setSelectedYear]  = useState(DEFAULT_YEAR);
+  const [selectedMonth, setSelectedMonth] = useState(DEFAULT_MONTH);
   const [loading,       setLoading]       = useState(false);
   const [prediction,    setPrediction]    = useState<number | null>(null);
   const [isExperimentMode, setIsExperimentMode] = useState(false);
@@ -603,13 +609,13 @@ export default function Page() {
   const shapleyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [features, setFeatures] = useState<ClimateFeature[]>([
-    { id: 'nao',   name: 'North Atlantic Oscillation',        value: 0.5,  fixed: true, abbreviation: 'NAO'   },
-    { id: 'amo',   name: 'Atlantic Multidecadal Oscillation', value: 0.3,  fixed: true, abbreviation: 'AMO'   },
-    { id: 'nino',  name: 'El Niño–Southern Oscillation',      value: -0.2, fixed: true, abbreviation: 'NINO'  },
-    { id: 'pdo',   name: 'Pacific Decadal Oscillation',       value: 0.4,  fixed: true, abbreviation: 'PDO'   },
-    { id: 'iod',   name: 'Indian Ocean Dipole',               value: 0.1,  fixed: true, abbreviation: 'IOD'   },
-    { id: 'anino', name: 'Atlantic Niño',                     value: 0.2,  fixed: true, abbreviation: 'ANINO' },
-    { id: 'ismr',  name: 'Indian Summer Monsoon Rainfall',    value: 600,  fixed: true, abbreviation: 'ISMR'  },
+    { id: 'nao',   name: 'North Atlantic Oscillation',        value: DEFAULT_DATA_POINT?.data.nao  ?? 0.5,  fixed: true, abbreviation: 'NAO'   },
+    { id: 'amo',   name: 'Atlantic Multidecadal Oscillation', value: DEFAULT_DATA_POINT?.data.amo  ?? 0.3,  fixed: true, abbreviation: 'AMO'   },
+    { id: 'nino',  name: 'El Niño–Southern Oscillation',      value: DEFAULT_DATA_POINT?.data.nino ?? -0.2, fixed: true, abbreviation: 'NINO'  },
+    { id: 'pdo',   name: 'Pacific Decadal Oscillation',       value: DEFAULT_DATA_POINT?.data.pdo  ?? 0.4,  fixed: true, abbreviation: 'PDO'   },
+    { id: 'iod',   name: 'Indian Ocean Dipole',               value: DEFAULT_DATA_POINT?.data.iod  ?? 0.1,  fixed: true, abbreviation: 'IOD'   },
+    { id: 'anino', name: 'Atlantic Niño',                     value: DEFAULT_DATA_POINT?.data.anino?? 0.2,  fixed: true, abbreviation: 'ANINO' },
+    { id: 'ismr',  name: 'Indian Summer Monsoon Rainfall',    value: DEFAULT_DATA_POINT?.data.ismr ?? 600,  fixed: true, abbreviation: 'ISMR'  },
   ]);
 
   // ── Fetch SHAP from backend ────────────────────────────────────────────────
