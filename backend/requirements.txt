@@ -4,3 +4,4 @@ torch
 numpy
 joblib
 huggingface_hub
+scikit-learn
