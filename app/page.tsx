@@ -31,6 +31,18 @@ interface ClimateData {
   ismr: number;
 }
 
+type BackendErrorResponse = {
+  error?: string;
+};
+
+const isBackendErrorResponse = (value: unknown): value is BackendErrorResponse =>
+  typeof value === 'object' && value !== null && 'error' in value;
+
+const extractBackendError = (value: unknown, fallback: string) =>
+  isBackendErrorResponse(value) && typeof value.error === 'string'
+    ? value.error
+    : fallback;
+
 interface ParamRange {
   min: number;
   max: number;
@@ -590,8 +602,8 @@ function ParameterPanel({
 export default function Page() {
   const { isMobile } = useBreakpoint();
 
-  const [selectedYear,  setSelectedYear]  = useState(DEFAULT_YEAR);
-  const [selectedMonth, setSelectedMonth] = useState(DEFAULT_MONTH);
+  const [selectedYear,  setSelectedYear]  = useState(2020);
+  const [selectedMonth, setSelectedMonth] = useState(1);
   const [loading,       setLoading]       = useState(false);
   const [prediction,    setPrediction]    = useState<number | null>(null);
   const [isExperimentMode, setIsExperimentMode] = useState(false);
@@ -609,13 +621,13 @@ export default function Page() {
   const shapleyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [features, setFeatures] = useState<ClimateFeature[]>([
-    { id: 'nao',   name: 'North Atlantic Oscillation',        value: DEFAULT_DATA_POINT?.data.nao  ?? 0.5,  fixed: true, abbreviation: 'NAO'   },
-    { id: 'amo',   name: 'Atlantic Multidecadal Oscillation', value: DEFAULT_DATA_POINT?.data.amo  ?? 0.3,  fixed: true, abbreviation: 'AMO'   },
-    { id: 'nino',  name: 'El Niño–Southern Oscillation',      value: DEFAULT_DATA_POINT?.data.nino ?? -0.2, fixed: true, abbreviation: 'NINO'  },
-    { id: 'pdo',   name: 'Pacific Decadal Oscillation',       value: DEFAULT_DATA_POINT?.data.pdo  ?? 0.4,  fixed: true, abbreviation: 'PDO'   },
-    { id: 'iod',   name: 'Indian Ocean Dipole',               value: DEFAULT_DATA_POINT?.data.iod  ?? 0.1,  fixed: true, abbreviation: 'IOD'   },
-    { id: 'anino', name: 'Atlantic Niño',                     value: DEFAULT_DATA_POINT?.data.anino?? 0.2,  fixed: true, abbreviation: 'ANINO' },
-    { id: 'ismr',  name: 'Indian Summer Monsoon Rainfall',    value: DEFAULT_DATA_POINT?.data.ismr ?? 600,  fixed: true, abbreviation: 'ISMR'  },
+    { id: 'nao',   name: 'North Atlantic Oscillation',        value: 0.5,  fixed: true, abbreviation: 'NAO'   },
+    { id: 'amo',   name: 'Atlantic Multidecadal Oscillation', value: 0.3,  fixed: true, abbreviation: 'AMO'   },
+    { id: 'nino',  name: 'El Niño–Southern Oscillation',      value: -0.2, fixed: true, abbreviation: 'NINO'  },
+    { id: 'pdo',   name: 'Pacific Decadal Oscillation',       value: 0.4,  fixed: true, abbreviation: 'PDO'   },
+    { id: 'iod',   name: 'Indian Ocean Dipole',               value: 0.1,  fixed: true, abbreviation: 'IOD'   },
+    { id: 'anino', name: 'Atlantic Niño',                     value: 0.2,  fixed: true, abbreviation: 'ANINO' },
+    { id: 'ismr',  name: 'Indian Summer Monsoon Rainfall',    value: 600,  fixed: true, abbreviation: 'ISMR'  },
   ]);
 
   // ── Fetch SHAP from backend ────────────────────────────────────────────────
@@ -634,17 +646,17 @@ export default function Page() {
         });
 
         if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error((err as any).error ?? `HTTP ${res.status}`);
+          const err = await res.json().catch(() => null);
+          throw new Error(extractBackendError(err, `HTTP ${res.status}`));
         }
 
         const result = await res.json();
         if (result.shapley) {
           setShapleyData(result.shapley as ShapleyData);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Shapley fetch error:', err);
-        setShapleyError(err?.message ?? 'Unknown error');
+        setShapleyError(err instanceof Error ? err.message : String(err ?? 'Unknown error'));
       } finally {
         setShapleyLoading(false);
       }
@@ -708,7 +720,12 @@ export default function Page() {
   const loadDataForYearMonth = (year: number, month: number) => {
     const dp = mockClimateDatabase.find(d => d.year === year && d.month === month);
     if (dp) {
-      setFeatures(prev => prev.map(f => ({ ...f, value: (dp.data as any)[f.id] ?? f.value, fixed: true })));
+      const dpData = dp.data as ClimateData;
+      setFeatures(prev => prev.map(f => ({
+        ...f,
+        value: dpData[f.id as keyof ClimateData] ?? f.value,
+        fixed: true,
+      })));
     }
   };
 
@@ -781,8 +798,8 @@ export default function Page() {
         body: JSON.stringify({ target_year: targetYear, monthly_data }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as any).error ?? `HTTP ${res.status}`);
+        const err = await res.json().catch(() => null);
+        throw new Error(extractBackendError(err, `HTTP ${res.status}`));
       }
       const result = await res.json();
       setPrediction(result.prediction ?? null);
@@ -796,7 +813,7 @@ export default function Page() {
       if (vizMode === 'shapley') {
         scheduleShapley(features, targetYear, true);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Prediction error:', err);
     } finally {
       setLoading(false);
